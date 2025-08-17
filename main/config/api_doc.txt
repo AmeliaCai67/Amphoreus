@@ -1,0 +1,56 @@
+
+intern:
+
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="eyJ0eXBlIjoiSl...请填写准确的 token！",  # 此处传token，不带Bearer
+    base_url="https://chat.intern-ai.org.cn/api/v1/",
+)
+
+chat_rsp = client.chat.completions.create(
+    model="internlm3-latest",
+    messages=[{"role": "user", "content": "hello"}],
+)
+
+for choice in chat_rsp.choices:
+    print(choice.message.content)
+
+
+deepseek:
+
+# Please install OpenAI SDK first: `pip3 install openai`
+
+from openai import OpenAI
+
+client = OpenAI(api_key="<DeepSeek API Key>", base_url="https://api.deepseek.com")
+
+response = client.chat.completions.create(
+    model="deepseek-chat",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant"},
+        {"role": "user", "content": "Hello"},
+    ],
+    stream=False
+)
+
+print(response.choices[0].message.content) 
+
+
+minimax:
+
+from openai import OpenAI
+
+client = OpenAI(api_key="<minimax api key>", base_url="https://api.minimaxi.com/v1")
+
+response = client.chat.completions.create(
+  model="MiniMax-M1",
+  messages=[
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "Hello!"}
+  ],
+  stream=True
+)
+
+for chunk in response:
+  print(chunk)
