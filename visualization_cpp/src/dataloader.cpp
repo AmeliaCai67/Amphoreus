@@ -2,6 +2,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QRegularExpression>
+#include <QFileInfo> // Added for QFileInfo
 
 DataLoader::DataLoader(QObject *parent) : QObject(parent), pythonProcess(nullptr)
 {
@@ -29,34 +30,95 @@ void DataLoader::loadData(int rounds)
     QString projectRoot = "/Users/kekoukelewenxue/Desktop/jobs/Amphoreus";
     pythonProcess->setWorkingDirectory(projectRoot);
     
-    // 准备Python脚本 - 使用绝对路径
-    QString scriptPath = projectRoot + "/main/data_export.py";
+    // 使用启动脚本
+    QString scriptPath = projectRoot + "/main/run_export.sh";
     QStringList arguments;
-    arguments << scriptPath << QString::number(rounds);
+    arguments << QString::number(rounds);
     
     emit loadingProgress(0, "启动Python进程...");
     
-    // 启动Python进程 - 使用python3而不是python
-    pythonProcess->setProcessChannelMode(QProcess::MergedChannels);
-    pythonProcess->start("python3", arguments);
-    
-    // 输出调试信息
-    qDebug() << "启动Python进程:" << "python3" << arguments;
+    // 输出详细的调试信息
+    qDebug() << "=== 开始启动Python进程 ===";
+    qDebug() << "脚本路径:" << scriptPath;
+    qDebug() << "参数:" << arguments;
     qDebug() << "工作目录:" << projectRoot;
+    qDebug() << "bash路径: /bin/bash";
+    
+    // 检查脚本文件是否存在
+    QFileInfo scriptFile(scriptPath);
+    if (!scriptFile.exists()) {
+        qDebug() << "错误: 脚本文件不存在:" << scriptPath;
+        emit loadingError("脚本文件不存在: " + scriptPath);
+        return;
+    }
+    
+    if (!scriptFile.isExecutable()) {
+        qDebug() << "错误: 脚本文件不可执行:" << scriptPath;
+        emit loadingError("脚本文件不可执行: " + scriptPath);
+        return;
+    }
+    
+    qDebug() << "脚本文件检查通过，开始启动...";
+    
+    // 启动脚本
+    pythonProcess->setProcessChannelMode(QProcess::MergedChannels);
+    pythonProcess->start("/bin/bash", QStringList() << scriptPath << arguments);
+    
+    // 检查进程是否成功启动
+    if (!pythonProcess->waitForStarted(3000)) { // 等待3秒
+        qDebug() << "错误: 无法启动进程";
+        qDebug() << "错误信息:" << pythonProcess->errorString();
+        emit loadingError("无法启动进程: " + pythonProcess->errorString());
+        return;
+    }
+    
+    qDebug() << "进程启动成功，PID:" << pythonProcess->processId();
+    emit loadingProgress(10, "Python进程已启动，等待输出...");
 }
 
 void DataLoader::onPythonProcessOutput()
 {
     // 读取Python进程的输出
     QByteArray output = pythonProcess->readAllStandardOutput();
-    outputBuffer.append(QString::fromUtf8(output));
+    QString outputStr = QString::fromUtf8(output);
+    outputBuffer.append(outputStr);
+    
+    // 实时解析输出
+    parseRealTimeOutput(outputStr);
+    
+    // 输出调试信息
+    qDebug() << "收到Python输出，长度:" << outputStr.length();
+    qDebug() << "输出内容:" << outputStr;
+    qDebug() << "当前缓冲区总长度:" << outputBuffer.length();
     
     // 更新进度
     emit loadingProgress(50, "正在处理数据...");
 }
 
+void DataLoader::parseRealTimeOutput(const QString &newOutput)
+{
+    // 解析每个角色的决策
+    QRegularExpression decisionRegex("([A-Za-z0-9]+):\\s*\\{'decision':\\s*'([01])',\\s*'reason':\\s*'([^']+)'\\}");
+    QRegularExpressionMatchIterator i = decisionRegex.globalMatch(newOutput);
+    
+    while (i.hasNext()) {
+        QRegularExpressionMatch match = i.next();
+        QString character = match.captured(1);
+        QString decision = match.captured(2);
+        QString reason = match.captured(3);
+        
+        qDebug() << "解析到决策:" << character << decision << reason;
+        emit realTimeLogEntry(character, decision, reason);
+    }
+}
+
 void DataLoader::onPythonProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
+    qDebug() << "=== Python进程结束 ===";
+    qDebug() << "退出码:" << exitCode;
+    qDebug() << "退出状态:" << (exitStatus == QProcess::NormalExit ? "正常" : "异常");
+    qDebug() << "完整输出:" << outputBuffer;
+    
     if (exitCode == 0 && exitStatus == QProcess::NormalExit) {
         // 处理完整的输出
         extractDataFromPythonOutput();
@@ -86,7 +148,10 @@ void DataLoader::onPythonProcessError(QProcess::ProcessError error)
     
     // 添加更多调试信息
     errorMessage += "\n" + pythonProcess->errorString();
-    qDebug() << "Python进程错误:" << errorMessage;
+    qDebug() << "=== Python进程错误 ===";
+    qDebug() << "错误类型:" << error;
+    qDebug() << "错误信息:" << errorMessage;
+    qDebug() << "进程状态:" << pythonProcess->state();
     
     emit loadingError(errorMessage);
 }

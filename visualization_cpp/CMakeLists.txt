@@ -26,6 +26,8 @@ set(PROJECT_SOURCES
     src/dataloader.h
     src/rounddetailwidget.cpp
     src/rounddetailwidget.h
+    src/realtimedialog.cpp
+    src/realtimedialog.h
 )
 
 # 创建可执行文件

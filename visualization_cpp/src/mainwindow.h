@@ -10,6 +10,7 @@
 #include <QSplitter>
 #include "dataloader.h"
 #include "rounddetailwidget.h"
+#include "realtimedialog.h"
 
 class MainWindow : public QMainWindow
 {

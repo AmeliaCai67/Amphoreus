@@ -3,6 +3,7 @@
 #include <QHBoxLayout>
 #include <QFont>
 #include <QMessageBox>
+#include "realtimedialog.h" // Added for RealTimeDialog
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 {
@@ -125,8 +126,16 @@ void MainWindow::setupDataPage()
 
 void MainWindow::onStartButtonClicked()
 {
-    // 切换到加载页面
-    stackedWidget->setCurrentWidget(loadingPage);
+    // 创建并显示实时对话框
+    RealTimeDialog *dialog = new RealTimeDialog(this);
+    
+    // 连接实时信号
+    connect(dataLoader, &DataLoader::realTimeLogEntry, dialog, &RealTimeDialog::addLogEntry);
+    connect(dataLoader, &DataLoader::loadingProgress, dialog, &RealTimeDialog::updateProgress);
+    connect(dataLoader, &DataLoader::dataLoaded, dialog, &RealTimeDialog::simulationComplete);
+    
+    // 显示对话框
+    dialog->show();
     
     // 开始加载数据
     dataLoader->loadData(6);

@@ -33,6 +33,7 @@ signals:
     void dataLoaded();
     void loadingProgress(int percentage, const QString &message);
     void loadingError(const QString &errorMessage);
+    void realTimeLogEntry(const QString &character, const QString &decision, const QString &reason); // 新增
     
 private slots:
     void onPythonProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
@@ -51,6 +52,9 @@ private:
     
     // 从Python脚本输出中提取数据
     void extractDataFromPythonOutput();
+    
+    // 实时解析Python输出
+    void parseRealTimeOutput(const QString &newOutput);
 };
 
 #endif // DATALOADER_H
