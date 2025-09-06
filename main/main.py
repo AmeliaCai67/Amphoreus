@@ -108,6 +108,65 @@ def analyze_regression_logs(logs_dict: dict):
     
     return analysis
 
+def get_visualization_data(logs_dict):
+    """将日志数据转换为可视化所需的格式"""
+    visualization_data = []
+    for round_key, (final_result, robbed_list) in logs_dict.items():
+        round_data = {
+            "round": round_key,
+            "decisions": final_result,
+            "robbed": robbed_list
+        }
+        visualization_data.append(round_data)
+    return visualization_data
+    
+    # # 存储全局日志信息
+    # global_logs = {
+    #     "start_message": f"=== 开始永劫回归测试，共 {len(logs_dict)} 轮迭代 ===",
+    #     "end_message": f"🎯 永劫回归测试完成！共执行 {len(logs_dict)} 轮迭代"
+    # }
+    
+    # # 处理每轮迭代的数据
+    # for round_key, (final_result, robbed_list) in logs_dict.items():
+    #     # 提取轮次编号
+    #     round_num = round_key.replace('第', '').replace('次永劫回归', '')
+        
+    #     # 计算统计数据
+    #     total_fire_chasers = len([s for s in final_result.values() if '逐火' in s])
+    #     willing_handovers = len([s for s in final_result.values() if '交出火种' in s])
+    #     forced_robberies = len([s for s in final_result.values() if '火种被强夺' in s])
+    #     non_fire_chasers = total_fire_chasers - willing_handovers - forced_robberies
+        
+    #     # 构建本轮日志数据
+    #     round_logs = {
+    #         "start": f"🔄 第 {round_num} 轮永劫回归开始",
+    #         "stats": {
+    #             "逐火者总数": total_fire_chasers,
+    #             "主动交出火种": willing_handovers,
+    #             "被强夺火种": forced_robberies,
+    #             "不逐火者": non_fire_chasers
+    #         },
+    #         "decisions": final_result,  # 各角色的决策结果
+    #         "robbed": robbed_list      # 被强夺火种的角色列表
+    #     }
+        
+    #     # 构建完整的轮次数据
+    #     round_data = {
+    #         "round": round_key,
+    #         "round_num": int(round_num),
+    #         "logs": round_logs
+    #     }
+        
+    #     visualization_data.append(round_data)
+    
+    # # 按轮次排序
+    # visualization_data.sort(key=lambda x: x["round_num"])
+    
+    # return {
+    #     "global_logs": global_logs,
+    #     "rounds": visualization_data
+    # }
+    
 if __name__ == "__main__":
     # 执行6轮永劫回归测试
     print("🚀 启动永劫回归测试程序")
