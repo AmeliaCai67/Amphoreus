@@ -73,7 +73,7 @@ class SimpleAPIClient:
     def chat(self, 
              content: str, 
              system_prompt: str = None,
-             temperature: float = 0.7,
+             temperature: float = 1.5,
              max_tokens: int = 1000,
              stream: bool = False) -> str:
         """
@@ -403,8 +403,8 @@ if __name__ == "__main__":
         
         # 从环境变量获取API密钥
         # manager.add_client("intern", "intern", model="internlm3-latest")
-        # manager.add_client("deepseek", "deepseek", model="deepseek-chat")
-        manager.add_client("minimax", "minimax", model="MiniMax-M1")
+        manager.add_client("deepseek", "deepseek", model="deepseek-chat")
+        # manager.add_client("minimax", "minimax", model="MiniMax-M1")
         
         # 测试消息
         test_message = "你好，请简单介绍一下你自己"
@@ -412,12 +412,12 @@ if __name__ == "__main__":
         print(f"发送测试消息: {test_message}")
         
         # response1 = manager.chat("intern", test_message)
-        # response2 = manager.chat("deepseek", test_message)
-        response3 = manager.chat("minimax", test_message)
+        response2 = manager.chat("deepseek", test_message)
+        # response3 = manager.chat("minimax", test_message)
         
         # print(f"\nIntern回复: {response1}")
-        # print(f"DeepSeek回复: {response2}")
-        print(f"Minimax回复: {response3}")
+        print(f"DeepSeek回复: {response2}")
+        # print(f"Minimax回复: {response3}")
         
         # 打印响应时间统计
         manager.print_response_times()

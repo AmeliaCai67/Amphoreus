@@ -1,6 +1,94 @@
 import agent
 import time
 
+# API 设定
+from config.api_config import SimpleAPIClient
+
+def decode_decision_from_memory(name:str, last_memory):
+    """
+    从记忆中解析决策结果，尝试三次：1) 正则匹配 2) json.loads 3) ast.literal_eval，均失败则报告失败。
+
+    返回:
+        '1' 表示同意，'0' 表示拒绝，'' 表示解析失败
+    """
+
+    import re, json, ast, time
+
+    def _normalize_decision(val):
+        if isinstance(val, bool):
+            return '1' if val else '0'
+        if isinstance(val, int):
+            return '1' if val == 1 else '0' if val == 0 else ''
+        if isinstance(val, str):
+            s = val.strip()
+            return '1' if s == '1' else '0' if s == '0' else ''
+        return ''
+
+    def _extract_from_dict(d):
+        if not isinstance(d, dict):
+            return ''
+        # 优先查找常见键名
+        for k in ('decision', 'Decision', "'decision'"):
+            if k in d:
+                return _normalize_decision(d[k])
+        # 兼容字符串键
+        if 'decision' in d:
+            return _normalize_decision(d['decision'])
+        return ''
+
+    # 如果已经是 dict-like，直接解析
+    if not isinstance(last_memory, str):
+        res = _extract_from_dict(last_memory)
+        if res:
+            return res
+        print(f"{name or '未知角色'}的最后一条记忆解析失败")
+        return ''
+
+    # 如果是字符串，尝试三次（每次按顺序使用三种方法）
+    for attempt in range(3):
+        # 1) 正则匹配，支持单/双引号
+        match = re.search(r"""['"]?decision['"]?\s*:\s*['"]?([01])['"]?""", last_memory)
+        if match:
+            return match.group(1)
+
+        # 2) 尝试用 json.loads 解析
+        try:
+            obj = json.loads(last_memory)
+            res = _extract_from_dict(obj)
+            if res:
+                return res
+        except Exception:
+            pass
+
+        # 3) 尝试用 ast.literal_eval 解析（安全的 python literal 解析）
+        try:
+            obj = ast.literal_eval(last_memory)
+            res = _extract_from_dict(obj)
+            if res:
+                return res
+        except Exception:
+            pass
+
+        # 小间隔后重试
+        time.sleep(0.1)
+
+    # 三次尝试均失败, 调用ai模型解析
+    # print(f"尝试三次均失败，调用AI模型解析{name or '未知角色'}的最后一条记忆")
+    api_client = SimpleAPIClient(provider="deepseek", model="deepseek-chat")
+    prompt = (
+        "请从以下文本中提取决策结果，该角色是否认同逐火或交出火种的请求？"
+        "如果认同，请返回 '1'；如果拒绝，请返回 '0'；如果无法确定，请返回空字符串 ''。\n"
+        f"文本内容：{last_memory}\n"
+        "只需返回 '1'、'0' 或 ''，不要添加任何其他解释。"
+    )
+    response = api_client.chat(content=prompt, system_prompt="你是一个专业的文本解析助手。")
+    res = _normalize_decision(response)
+    if res:
+        return res
+    else:
+        print(f"{name or '未知角色'}的最后一条记忆解析失败")
+        return ''
+
 def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
     """
     运行一轮完整的迭代
@@ -56,27 +144,15 @@ def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
     for name, heir in heirs.items():
         # 获取最后一条记忆并解析JSON
         last_memory = heir.memory[-1]
-        
-        # 如果是字符串，用正则表达式匹配decision值
-        if isinstance(last_memory, str):
-            import re
-            # 匹配 {'decision': '0' 或 {'decision': '1'
-            match = re.search(r"'decision':\s*'([01])'", last_memory)
-            if match:
-                decision = match.group(1)
-            else:
-                print(f"{name}的最后一条记忆解析失败")
-                decision = ''
-        else:
-            # 如果已经是字典格式
-            decision = last_memory.get('decision', '')
-        
+        # print(f"解析{name}的最后一条记忆：{last_memory}\n类型: {type(last_memory)}")
+        decision = decode_decision_from_memory(name, last_memory)
+
         if decision == '1':
             fire_chasers_dict[name] = '逐火'
         elif decision == '0':
             fire_chasers_dict[name] = '不逐火'
         else:
-            fire_chasers_dict[name] = '未做出决策'
+            fire_chasers_dict[name] = '不逐火'  # 默认不逐火
 
     print(f"逐火结果：{fire_chasers_dict}")
     print('=====================')
@@ -121,20 +197,7 @@ def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
         if fire_chasers_dict[name] == '逐火':
             # 获取最后一条记忆并解析JSON
             last_memory = heir.memory[-1]
-            
-            # 如果是字符串，用正则表达式匹配decision值
-            if isinstance(last_memory, str):
-                import re
-                # 匹配 {'decision': '0' 或 {'decision': '1'
-                match = re.search(r"'decision':\s*'([01])'", last_memory)
-                if match:
-                    decision = match.group(1)
-                else:
-                    print(f"{name}的最后一条记忆解析失败")
-                    decision = ''
-            else:
-                # 如果已经是字典格式
-                decision = last_memory.get('decision', '')
+            decision = decode_decision_from_memory(name, last_memory)
             
             if decision == '1':
                 fire_chasers_dict[name] += '_交出火种'
@@ -201,20 +264,7 @@ def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
             if fire_chasers_dict[name] == '逐火_不交出火种':
                 # 获取最后一条记忆并解析JSON
                 last_memory = heir.memory[-1]
-                
-                # 如果是字符串，用正则表达式匹配decision值
-                if isinstance(last_memory, str):
-                    import re
-                    # 匹配 {'decision': '0' 或 {'decision': '1'
-                    match = re.search(r"'decision':\s*'([01])'", last_memory)
-                    if match:
-                        decision = match.group(1)
-                    else:
-                        print(f"{name}的最后一条记忆解析失败")
-                        decision = ''
-                else:
-                    # 如果已经是字典格式
-                    decision = last_memory.get('decision', '')
+                decision = decode_decision_from_memory(name, last_memory)
                 
                 if decision == '1':
                     fire_chasers_dict[name] = '逐火_交出火种'
@@ -277,8 +327,8 @@ def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
             chars_count = len(memory_str)
             total_chars += chars_count
             # print(f"记忆 {i+1}: {memory_str[:100]}{'...' if len(memory_str) > 100 else ''}")
-            print(f"字符数: {chars_count}")
-            print("-" * 30)
+            # print(f"字符数: {chars_count}")
+            # print("-" * 30)
         
         print(f"\n{black_heir_name} 总记忆条数: {len(black_heir.memory)}")
         print(f"{black_heir_name} 总字符数: {total_chars}")
