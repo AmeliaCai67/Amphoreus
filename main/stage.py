@@ -204,7 +204,7 @@ def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
             elif decision == '0':
                 fire_chasers_dict[name] += '_不交出火种'
             else:
-                fire_chasers_dict[name] += '_未做出决策'
+                fire_chasers_dict[name] += '_不交出火种'  # 默认不交出火种
 
     print(f"收集火种结果：{fire_chasers_dict}")
     print('=====================')
