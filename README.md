@@ -28,14 +28,73 @@
 - **决策与劝说**：AI Agent 需根据当前情境和记忆做出决策，并参与到劝说与被劝说的过程中。
 - **永劫回归循环**：通过多轮迭代，观察 AI Agent 在重复情境下的行为变化，探索“永劫回归”对智能体的影响。
 
+
 ## 代码构成
 
-项目主要由以下核心文件组成：
+- main/main.py — 程序入口，负责解析运行参数、驱动多轮迭代（永劫回归循环），并汇总每轮日志/统计信息。
+- main/agent.py — 定义 Agent 类与行为决策逻辑（黄金裔、圣女、盗火行者等），包含记忆读写与劝说/强夺流程。
+- main/stage.py — 管理单轮“舞台”流程（神谕发布、逐火决策、劝说与火种交互、记忆收集与合并）。
+- main/data_export.py — 将模拟结果导出为 JSON/CSV，用于后续分析与可视化。
+- main/run_export.sh — 导出脚本（用于类 Unix 环境，Windows 可使用相应 Python 脚本或在 WSL/Git Bash 中运行）。
+- config/api_config.py — 对接外部 API（如 DeepSeek）的配置与加载辅助逻辑。
+- config/api_doc.txt — API 使用说明与示例（可参考）。
+- __pycache__/ — Python 字节码缓存（自动生成，不需纳入版本控制）。
+
+备注：
+- 若添加新依赖，请将 requirements.txt 或在 README 中记录依赖列表。
+- 建议将敏感信息（API Key）放到 .env 或系统环境变量，不要提交到版本控制。
 
 ## 如何运行
 
-```bash
-python main/main.py
-```
+1. 环境准备（Windows）：
+   - 安装 Python 3.11+（或与项目兼容的版本）。
+   - 在项目根目录创建虚拟环境并激活（PowerShell）：
+     ```powershell
+     python -m venv .venv
+     .\.venv\Scripts\Activate.ps1
+     ```
+   - 或使用 CMD：
+     ```cmd
+     python -m venv .venv
+     .\.venv\Scripts\activate
+     ```
+
+2. 配置 API Key：
+   - 在项目根目录创建 `.env` 文件，写入：
+     ```
+     DEEPSEEK_API_KEY=your_deepseek_api_key_here
+     ```
+   - 或在 PowerShell 暂时设置（仅当前会话）：
+     ```powershell
+     $env:DEEPSEEK_API_KEY="your_deepseek_api_key_here"
+     ```
+
+3. 安装依赖：
+   ```powershell
+   pip install python-dotenv requests
+   pip install -r requirements.txt
+     ```
+
+4. 运行模拟：
+   ```powershell
+   python main/main.py
+   ```
+   - 程序会按预设轮数执行永劫回归模拟，并在控制台输出每轮统计信息与最终分析。可在 main/ 下查找或配置结果导出位置。
+
+5. 导出结果：
+   - 在类 Unix 环境（WSL / Git Bash / macOS / Linux）可运行：
+     ```bash
+     ./main/run_export.sh
+     ```
+   - 或直接使用 Python 导出脚本（跨平台）：
+     ```powershell
+     python main/data_export.py
+     ```
+
+6. 常见提示：
+   - 切勿将 `.env` 或含有真实 API Key 的文件提交到版本控制；建议在 .gitignore 中加入 `.env`。
+   - 如需更改迭代轮数或日志级别，查看 main/main.py 中的参数或配置项并调整。
+
+
 
 运行后，程序将执行预设轮数的永劫回归模拟，并输出每轮的统计信息和最终分析结果。

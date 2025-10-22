@@ -7,35 +7,15 @@ main/config/API_KEY.txt
 # 环境变量文件
 .env
 
-# Python
+# Python & env
+.venv/
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+*.pyo
 
-# IDE
+# tooling
 .vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db 
+.pytest_cache/
+coverage/
+dist/
+build/
