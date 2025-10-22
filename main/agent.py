@@ -276,23 +276,25 @@ def init_black_heir():
     return black_heirs
 
 if __name__ == "__main__":
-    # import itertools
-    # heirs = init_chrysos_heir()
-    # for name, heir in itertools.islice(heirs.items(), 3):
-    #     start_time = time.time()
-    #     res = heir.make_decision(question="是否逐火？")
-    #     end_time = time.time()
-    #     print(f"{name}: {res}")
-    #     print(f"决策时间：{end_time - start_time}秒")
-    #     print('=====================')
-    black_heirs = init_black_heir()
-    for name, heir in black_heirs.items():
+    import itertools
+    heirs = init_chrysos_heir()
+    # for name, heir in itertools.islice(heirs.items(), 2):
+    for name, heir in heirs.items():
         start_time = time.time()
-        ans = heir.answer(question="作为来自未来的救世主，请劝诫已然踏上逐火之旅的黄金裔，让他们把火种交给你吧。")
-        # res = heir.make_decision(question="是否逐火？")
+        heir.reflect()
+        res = heir.answer(question="你的愿望是？")
         end_time = time.time()
-        print(f"{name}: {ans}")
-        print(f"耗时：{end_time - start_time}秒")
+        print(f"{name}: {res}")
+        print(f"时间：{end_time - start_time}秒")
         print('=====================')
+    # black_heirs = init_black_heir()
+    # for name, heir in black_heirs.items():
+    #     start_time = time.time()
+    #     ans = heir.answer(question="作为来自未来的救世主，请劝诫已然踏上逐火之旅的黄金裔，让他们把火种交给你吧。")
+    #     # res = heir.make_decision(question="是否逐火？")
+    #     end_time = time.time()
+    #     print(f"{name}: {ans}")
+    #     print(f"耗时：{end_time - start_time}秒")
+    #     print('=====================')
         
 
