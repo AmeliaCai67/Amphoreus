@@ -167,6 +167,21 @@ saga = '''
 
 '''
 
+CHARACTER_NAMES = {
+    "EpieiKeia216": "遐蝶",
+    "NeiKos496": "白厄",
+    "KaLos618": "阿格莱雅",
+    "HapLotes405": "缇宝",
+    "PoleMos600": "万敌",
+    "HubRis504": "刻律德菈",
+    "EleOs252": "风堇",
+    "ApoRia432": "海瑟音",
+    "SkeMma720": "那刻夏",
+    "OreXis945": "赛飞儿",
+    "Black_NeiKo": "盗火行者·白厄",
+}
+
+
 def init_chrysos_heir():
     heir_profiles = {
         "EpieiKeia216": {
