@@ -13,7 +13,7 @@
 
 ### 核心概念
 
-- **黄金裔（Chrysos Heir）**：12 位 AI Agent，每位拥有独特的【路径（path）】和【原动力（drive）】
+- **黄金裔（Chrysos Heir）**：10 位 AI Agent，每位拥有独特的【路径（path）】和【原动力（drive）】
 - **盗火行者（Black Heir）**：特殊的 Agent，负责劝说逐火者交出火种，跨迭代累积记忆
 - **火种（Fireseed）**：Agent 的交互日志，代表记忆、行为轨迹、选择历史的封装
 - **永劫回归**：多轮迭代循环，每轮结束后盗火行者收集火种进入下一轮
@@ -22,9 +22,9 @@
 
 - **编程语言**：Python 3.11+
 - **大模型 API**：DeepSeek（主要）、InternLM、MiniMax（支持多提供商切换）
-- **Web 可视化**：Streamlit
+- **Web API**：FastAPI + SSE 流式响应
 - **数据持久化**：JSON
-- **构建工具**：CMake（C++ 可视化组件）
+- **容器化**：Docker + Docker Compose
 
 ### 主要依赖
 
@@ -33,20 +33,21 @@ requests==2.32.5
 python-dotenv==1.1.1
 pandas
 numpy
-streamlit（需单独安装）
+fastapi
+uvicorn
 ```
 
 ## 项目结构
 
 ```
 Amphoreus/
-├── app.py                          # Streamlit Web 应用入口
+├── app/
+│   └── server.py                   # FastAPI Web 服务，提供 SSE 流式 API
 ├── main/                           # 核心模拟逻辑
 │   ├── main.py                     # 程序入口，永劫回归循环控制
 │   ├── agent.py                    # Agent 类定义与行为逻辑
 │   ├── stage.py                    # 单轮"舞台"流程管理
-│   ├── data_export.py              # 数据导出为 JSON/CSV
-│   ├── run_export.sh               # 导出脚本（Unix 环境）
+│   ├── data_export.py              # 数据导出为 JSON
 │   └── config/                     # API 配置
 │       ├── api_config.py           # API 客户端封装
 │       ├── api_doc.txt             # API 使用说明
@@ -55,12 +56,16 @@ Amphoreus/
 │   ├── entity_settings.json        # 角色路径、原动力等配置
 │   ├── notes.json                  # 角色铭文、预言等扩展信息
 │   └── entity_settings_text/       # 角色设定文本文件
+├── nginx/                          # Nginx 配置（Docker 部署用）
+│   ├── default.conf                # Nginx 配置文件
+│   ├── .htpasswd                   # 基础认证配置
+│   └── index.html                  # 默认页面
 ├── images/                         # 角色头像图片
 ├── facilities/                     # 工具脚本
 │   └── 2json.py                    # 文本配置转 JSON 工具
-├── build/                          # CMake 构建输出（C++ 可视化）
+├── docker-compose.yml              # Docker Compose 配置
 ├── talks.txt                       # 角色对话示例日志
-├── Genesis.json                    # 创世涡心数据（预留）
+├── INTRODUCTION.txt                # 项目设计思路与讨论
 ├── .env                            # 环境变量（API 密钥）
 └── requirements.txt                # Python 依赖
 ```
@@ -77,7 +82,7 @@ python -m venv .venv
 source .venv/bin/activate
 
 # 激活环境（Windows PowerShell）
-.\.venv\Scripts\Activate.ps1
+.venv\Scripts\Activate.ps1
 ```
 
 ### 2. 配置 API Key
@@ -85,14 +90,20 @@ source .venv/bin/activate
 在项目根目录创建 `.env` 文件：
 
 ```env
+# DeepSeek API（主要使用）
 DEEPSEEK_API_KEY=your_deepseek_api_key_here
-INTERN_API_KEY=your_intern_api_key_here
-MINIMAX_API_KEY=your_minimax_api_key_here
-
-# 可选：自定义 API 基础 URL
 DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-chat
+
+# InternLM API（可选）
+INTERN_API_KEY=your_intern_api_key_here
 INTERN_BASE_URL=https://chat.intern-ai.org.cn/api/v1
+INTERN_MODEL=internlm3-latest
+
+# MiniMax API（可选）
+MINIMAX_API_KEY=your_minimax_api_key_here
 MINIMAX_BASE_URL=https://api.minimaxi.com/v1
+MINIMAX_MODEL=MiniMax-M1
 ```
 
 **安全提示**：`.env` 文件已加入 `.gitignore`，切勿提交到版本控制。
@@ -100,7 +111,6 @@ MINIMAX_BASE_URL=https://api.minimaxi.com/v1
 ### 3. 安装依赖
 
 ```bash
-pip install python-dotenv requests streamlit
 pip install -r requirements.txt
 ```
 
@@ -112,19 +122,33 @@ pip install -r requirements.txt
 python main/main.py
 ```
 
-#### Web 可视化模式
+#### Web API 模式（FastAPI + SSE）
 
 ```bash
-streamlit run app.py
+# 启动 FastAPI 服务
+python app/server.py
+
+# 或使用 uvicorn
+uvicorn app.server:app --host 0.0.0.0 --port 8000
+```
+
+服务启动后，可通过 POST 请求访问 `/api/run_game` 接口：
+
+```bash
+curl -X POST http://localhost:8000/api/run_game \
+  -H "Content-Type: application/json" \
+  -d '{"password": "Amphoreus2026", "max_iterations": 6, "max_persuasions": 3}'
+```
+
+#### Docker 部署
+
+```bash
+docker-compose up -d
 ```
 
 ### 5. 导出结果
 
 ```bash
-# Unix 环境（使用脚本）
-./main/run_export.sh
-
-# 或直接使用 Python
 python main/data_export.py
 ```
 
@@ -152,8 +176,24 @@ class Chrysos_Heir:
 ```
 
 主要函数：
-- `init_chrysos_heir()` - 初始化 12 位黄金裔
+- `init_chrysos_heir()` - 初始化 10 位黄金裔
 - `init_black_heir()` - 初始化盗火行者
+
+**角色 ID 映射**（`CHARACTER_NAMES`）：
+
+| ID | 名称 | 路径 | 原动力 |
+|----|------|------|--------|
+| EpieiKeia216 | 遐蝶 | 死亡 | 平和 |
+| NeiKos496 | 白厄 | 负世 | 憎恨 |
+| KaLos618 | 阿格莱雅 | 浪漫 | 节制 |
+| HapLotes405 | 缇宝 | 门径 | 传递 |
+| PoleMos600 | 万敌 | 纷争 | 约束 |
+| HubRis504 | 刻律德菈 | 律法 | 支配 |
+| EleOs252 | 风堇 | 天空 | 治愈 |
+| ApoRia432 | 海瑟音 | 海洋 | 自否 |
+| SkeMma720 | 那刻夏 | 理性 | 批判 |
+| OreXis945 | 赛飞儿 | 诡计 | 渴望 |
+| Black_NeiKo | 盗火行者·白厄 | 负世 | 憎恨 |
 
 #### 2. `stage.py` - 舞台流程
 
@@ -175,12 +215,22 @@ class Chrysos_Heir:
 
 ```python
 def eternal_regression(rounds: int):
-    """永劫回归主循环"""
+    """永劫回归主循环（标准版）"""
     # 返回每轮迭代结果的日志字典
 
 def eternal_regression_realtime_streaming(rounds: int):
-    """流式版本，供 Streamlit 实时显示"""
+    """永劫回归流式版本（供 Web API 使用）"""
     # 使用生成器逐事件返回结果
+    # 事件类型: start, round_start, oracle, fire_decision, 
+    #          fire_result, persuasion, handover_decision, 
+    #          handover_result, persuasion_attempt, persuasion_detail,
+    #          handover_redecision, robbery, round_end, complete
+
+def analyze_regression_logs(logs_dict: dict):
+    """分析永劫回归日志，提供统计洞察"""
+
+def get_visualization_data(logs_dict):
+    """将日志数据转换为可视化所需的格式"""
 ```
 
 #### 4. `api_config.py` - API 封装
@@ -190,60 +240,54 @@ class SimpleAPIClient:
     """支持多提供商的统一 API 客户端"""
     
     # 支持：deepseek、intern、minimax
+    def __init__(self, provider, api_key=None, model=None)
     def chat(self, content, system_prompt=None, ...)
     def chat_stream(self, ...)  # 流式响应
+    def get_response_time(self)  # 获取响应时间
 
 class APIManager:
-    """多客户端管理器"""
+    """多客户端管理器，支持统一管理多个 API 提供商"""
+    
+    def add_client(self, name, provider, api_key=None, model=None)
+    def chat(self, client_name, content, **kwargs)
+    def get_all_response_times(self)
 ```
 
-## 角色配置
+**环境变量支持**：
+- `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL`
+- `INTERN_API_KEY` / `INTERN_BASE_URL` / `INTERN_MODEL`
+- `MINIMAX_API_KEY` / `MINIMAX_BASE_URL` / `MINIMAX_MODEL`
 
-角色配置位于 `main/agent.py` 中的 `heir_profiles` 字典：
+#### 5. `app/server.py` - FastAPI Web 服务
+
+提供 SSE（Server-Sent Events）流式 API：
 
 ```python
-heir_profiles = {
-    "EpieiKeia216": {  # 遐蝶
-        "name": "遐蝶",
-        "path": "死亡",
-        "drive": "平和",
-        "profile": "拥有夺走他人生命气息的双手...",
-        "memory": ["预言...", "背景..."]
-    },
-    "NeiKos496": {  # 白厄
-        "name": "白厄",
-        "path": "负世",
-        "drive": "憎恨",
-        ...
-    },
-    # ... 其他 10 位黄金裔
+@app.post("/api/run_game")
+async def start_game_endpoint(config: GameConfig):
+    # 接收密码、迭代次数、最大劝说次数等参数
+    # 返回 StreamingResponse，media_type 为 text/event-stream
+```
+
+请求格式：
+```json
+{
+  "password": "Amphoreus2026",
+  "max_iterations": 6,
+  "max_persuasions": 3
 }
 ```
 
-现有角色（10 位）：
-| ID | 名称 | 路径 | 原动力 |
-|----|------|------|--------|
-| EpieiKeia216 | 遐蝶 | 死亡 | 平和 |
-| NeiKos496 | 白厄 | 负世 | 憎恨 |
-| KaLos618 | 阿格莱雅 | 浪漫 | 节制 |
-| HapLotes405 | 缇宝 | 门径 | 传递 |
-| PoleMos600 | 万敌 | 纷争 | 约束 |
-| HubRis504 | 刻律德菈 | 律法 | 支配 |
-| EleOs252 | 风堇 | 天空 | 治愈 |
-| ApoRia432 | 海瑟音 | 海洋 | 自否 |
-| SkeMma720 | 那刻夏 | 理性 | 批判 |
-| OreXis945 | 赛飞儿 | 诡计 | 渴望 |
+响应格式（SSE）：
+```
+data: 🚀 启动永劫回归测试程序
 
-## 开发约定
+data: 🔄 第 1 轮永劫回归开始
 
-### 代码风格
+data: [DONE]
+```
 
-- 使用中文注释说明业务逻辑
-- 函数和变量使用英文命名（snake_case）
-- 类名使用驼峰命名法
-- 保留适当量的调试日志（`logging` 模块）
-
-### 决策解析约定
+## 决策解析约定
 
 Agent 的决策通过 `make_decision` 方法返回格式化的 JSON：
 
@@ -257,13 +301,14 @@ Agent 的决策通过 `make_decision` 方法返回格式化的 JSON：
 3. `ast.literal_eval` 解析
 4. 失败时调用 AI 模型辅助解析
 
-### 记忆累积规则
+## 记忆累积规则
 
 每轮迭代结束后，盗火行者的记忆按以下规则更新：
 - **主动交出火种** 或 **被强夺火种** 的逐火者：继承全部记忆
 - **不逐火** 的角色：仅继承第一条记忆
+- 同时记录被强夺火种的角色列表
 
-### API 调用重试机制
+## API 调用重试机制
 
 所有 API 调用均实现了重试机制：
 
@@ -292,30 +337,32 @@ python main/config/api_config.py
 
 ### 调试技巧
 
-1. **查看日志**：Web 模式下的日志会输出到终端
-2. **调整迭代次数**：在 `app.py` 中通过滑块调整（1-20 轮）
-3. **清空数据**：Web 界面提供"清空数据"按钮重置状态
+1. **查看日志**：API 调用会输出响应时间和错误信息
+2. **调整迭代次数**：在 `main.py` 或 Web API 参数中调整
+3. **切换 API 提供商**：修改 `agent.py` 中的客户端初始化
 
 ## 扩展开发
 
 ### 添加新角色
 
 1. 在 `agent.py` 的 `heir_profiles` 中添加角色配置
-2. 在 `app.py` 的 `CHARACTER_AVATARS` 和 `CHARACTER_NAMES` 中添加对应条目
-3. 准备角色头像图片放入 `images/` 目录
+2. 更新 `CHARACTER_NAMES` 字典
+3. 在 `characters/entity_settings.json` 中添加角色设定
 
 ### 切换 API 提供商
 
 修改 `agent.py` 中 `Chrysos_Heir.__init__` 的客户端初始化：
 
 ```python
-# 当前使用 DeepSeek
+# 当前使用 DeepSeek（默认）
 self.client = SimpleAPIClient(provider="deepseek", model="deepseek-chat")
 
 # 可切换为其他提供商
 self.client = SimpleAPIClient(provider="intern", model="internlm3-latest")
 self.client = SimpleAPIClient(provider="minimax", model="MiniMax-M1")
 ```
+
+或通过环境变量配置默认模型。
 
 ### 自定义流程
 
@@ -333,5 +380,6 @@ self.client = SimpleAPIClient(provider="minimax", model="MiniMax-M1")
 - `README.md` - 项目介绍与快速开始
 - `INTRODUCTION.txt` - 项目设计思路与讨论
 - `talks.txt` - 角色对话示例与测试日志
-- `characters/notes.json` - 角色铭文与预言配置
+- `characters/entity_settings.json` - 角色配置
+- `characters/notes.json` - 角色铭文与预言
 - `main/config/api_doc.txt` - 各 API 提供商使用示例

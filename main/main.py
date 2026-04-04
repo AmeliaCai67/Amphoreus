@@ -1,7 +1,7 @@
 # import stage
 # import agent
 
-def eternal_regression(rounds: int):
+def eternal_regression(rounds: int, max_persuasion_attempts: int = 3):
     import stage
     import agent
     """
@@ -16,6 +16,7 @@ def eternal_regression(rounds: int):
     
     Args:
         rounds (int): 迭代次数，决定永劫回归的轮数
+        max_persuasion_attempts (int): 每轮中盗火行者劝说顽固者的最大尝试次数，默认为3次
     
     Returns:
         dict: 记录每轮迭代结果的日志字典
@@ -43,14 +44,14 @@ def eternal_regression(rounds: int):
     # 主循环：执行指定轮数的永劫回归
     while round_num < rounds:
         round_num += 1
-        print(f"\n🔄 第 {round_num} 轮永劫回归开始")
+        print(f"\n>>> [第 {round_num} 轮永劫回归开始]")
         print("-" * 40)
         
         # 执行一轮完整的迭代
         # 每轮迭代都会更新盗火行者的记忆
         final_result, robbed_list = stage.run_one_iteration(
             black_heirs=black_heirs, 
-            max_persuasion_attempts=3
+            max_persuasion_attempts=max_persuasion_attempts
         )
         
         # 记录本轮迭代的结果
@@ -61,7 +62,7 @@ def eternal_regression(rounds: int):
         willing_handovers = len([s for s in final_result.values() if '交出火种' in s])
         forced_robberies = len([s for s in final_result.values() if '火种被强夺' in s])
         
-        print(f"\n📊 第 {round_num} 轮统计:")
+        print(f"\n>>> [第 {round_num} 轮统计]")
         print(f"   逐火者总数: {total_fire_chasers}")
         print(f"   主动交出火种: {willing_handovers}")
         print(f"   被强夺火种: {forced_robberies}")
@@ -71,7 +72,7 @@ def eternal_regression(rounds: int):
         for black_heir_name, black_heir in black_heirs.items():
             print(f"   {black_heir_name} 记忆条数: {len(black_heir.memory)}")
     
-    print(f"\n🎯 永劫回归测试完成！共执行 {rounds} 轮迭代")
+    print(f"\n>>> 永劫回归测试完成！共执行 {rounds} 轮迭代")
     print("=" * 60)
     
     return logs_dict
@@ -122,7 +123,7 @@ def get_visualization_data(logs_dict):
         visualization_data.append(round_data)
     return visualization_data
     
-def eternal_regression_realtime_streaming(rounds: int):
+def eternal_regression_realtime_streaming(rounds: int, max_persuasion_attempts: int = 3):
     """
     永劫回归测试函数 - 实时流式版本（细粒度事件）
     
@@ -130,6 +131,7 @@ def eternal_regression_realtime_streaming(rounds: int):
     
     Args:
         rounds (int): 迭代次数
+        max_persuasion_attempts (int): 每轮中盗火行者劝说顽固者的最大尝试次数，默认为3次
     
     Yields:
         dict: 事件字典，格式为 {'type': 'oracle'|'decision'|'persuasion'|'result', ...}
@@ -256,7 +258,7 @@ def eternal_regression_realtime_streaming(rounds: int):
         
         # === 阶段5：劝说顽固者 ===
         robbed_characters = []
-        for attempt in range(3):  # max_persuasion_attempts
+        for attempt in range(max_persuasion_attempts):
             stubborn_fire_chasers = [name for name, status in fire_chasers_dict.items() 
                                     if status == '逐火_不交出火种']
             
@@ -346,14 +348,14 @@ def eternal_regression_realtime_streaming(rounds: int):
 
 if __name__ == "__main__":
     # 执行6轮永劫回归测试
-    print("🚀 启动永劫回归测试程序")
+    print(">>> 启动永劫回归测试程序")
     logs_dict = eternal_regression(rounds=6)
     
     # 分析测试结果
-    print("\n📈 开始分析测试结果...")
+    print("\n>>> 开始分析测试结果...")
     analysis = analyze_regression_logs(logs_dict)
     
-    print(f"\n📊 测试结果分析:")
+    print(f"\n>>> [测试结果分析]")
     print(f"   总测试轮数: {analysis['总轮数']}")
     
     for round_num, stats in analysis['每轮统计'].items():
@@ -364,6 +366,6 @@ if __name__ == "__main__":
             else:
                 print(f"     {key}: {value if value else '无'}")
     
-    print("\n✅ 永劫回归测试程序执行完成！")
+    print("\n>>> 永劫回归测试程序执行完成！")
 
 

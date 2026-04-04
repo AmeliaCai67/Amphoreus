@@ -1,0 +1,47 @@
+:root {
+  /* 定义我们的配色卡 */
+  --bg-color-dark: #0D111D;
+  --bg-color-light: #1A213D;
+  --text-primary: #A0C4FF;
+  --text-highlight: #00FFFF;
+  --text-warn: #FFB703;
+  --border-color: rgba(0, 168, 255, 0.3);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: radial-gradient(circle at 50% 50%, var(--bg-color-light) 0%, var(--bg-color-dark) 100%);
+  color: var(--text-primary);
+  font-family: 'Fira Code', monospace; /* 全局使用等宽字体 */
+  height: 100vh;
+  overflow: hidden; /* 隐藏最外层滚动条，在终端内部滚动 */
+}
+
+/* CRT 扫描线特效层 */
+body::after {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+  background-size: 100% 4px;
+  z-index: 999;
+  pointer-events: none; /* 让鼠标事件穿透这个特效层 */
+}
+
+/* 发光文字基类 */
+.glow-text {
+  text-shadow: 0 0 5px rgba(160, 196, 255, 0.5);
+}
+.highlight {
+  color: var(--text-highlight);
+  text-shadow: 0 0 8px rgba(0, 255, 255, 0.6);
+}
+.warn {
+  color: var(--text-warn);
+}
