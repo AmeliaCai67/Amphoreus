@@ -23,6 +23,7 @@
 - **编程语言**：Python 3.11+
 - **大模型 API**：DeepSeek（主要）、InternLM、MiniMax（支持多提供商切换）
 - **Web API**：FastAPI + SSE 流式响应
+- **前端**：Vue 3 + Vite
 - **数据持久化**：JSON
 - **容器化**：Docker + Docker Compose
 
@@ -43,6 +44,14 @@ uvicorn
 Amphoreus/
 ├── app/
 │   └── server.py                   # FastAPI Web 服务，提供 SSE 流式 API
+├── frontend/                       # Vue 前端项目
+│   ├── index.html                  # 页面入口
+│   ├── src/
+│   │   ├── main.js                 # Vue 挂载点
+│   │   ├── App.vue                 # 核心组件
+│   │   └── style.css               # CRT 终端样式
+│   ├── package.json
+│   └── vite.config.js
 ├── main/                           # 核心模拟逻辑
 │   ├── main.py                     # 程序入口，永劫回归循环控制
 │   ├── agent.py                    # Agent 类定义与行为逻辑
@@ -132,13 +141,21 @@ python app/server.py
 uvicorn app.server:app --host 0.0.0.0 --port 8000
 ```
 
-服务启动后，可通过 POST 请求访问 `/api/run_game` 接口：
+服务启动后，可通过 GET 请求访问 `/api/run_game` 接口：
 
 ```bash
-curl -X POST http://localhost:8000/api/run_game \
-  -H "Content-Type: application/json" \
-  -d '{"password": "Amphoreus2026", "max_iterations": 6, "max_persuasions": 3}'
+curl "http://localhost:8000/api/run_game?password=33550336@Neikos496&max_iterations=6&max_persuasions=3"
 ```
+
+#### 前端开发模式
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+前端服务启动在 http://localhost:5173
 
 #### Docker 部署
 
@@ -214,17 +231,28 @@ class Chrysos_Heir:
 #### 3. `main.py` - 主控循环
 
 ```python
-def eternal_regression(rounds: int):
-    """永劫回归主循环（标准版）"""
-    # 返回每轮迭代结果的日志字典
+def eternal_regression(rounds: int, max_persuasion_attempts: int = 3):
+    """永劫回归主循环（标准版）
+    
+    Args:
+        rounds: 迭代次数
+        max_persuasion_attempts: 每轮中盗火行者劝说顽固者的最大尝试次数，默认为3次
+    """
 
-def eternal_regression_realtime_streaming(rounds: int):
-    """永劫回归流式版本（供 Web API 使用）"""
-    # 使用生成器逐事件返回结果
-    # 事件类型: start, round_start, oracle, fire_decision, 
-    #          fire_result, persuasion, handover_decision, 
-    #          handover_result, persuasion_attempt, persuasion_detail,
-    #          handover_redecision, robbery, round_end, complete
+def eternal_regression_realtime_streaming(rounds: int, max_persuasion_attempts: int = 3):
+    """永劫回归流式版本（供 Web API 使用）
+    
+    Args:
+        rounds: 迭代次数
+        max_persuasion_attempts: 每轮中盗火行者劝说顽固者的最大尝试次数，默认为3次
+    
+    Yields:
+        dict: 事件字典，格式为 {'type': 'oracle'|'decision'|'persuasion'|'result', ...}
+        事件类型: start, round_start, oracle, fire_decision, fire_result, 
+                 persuasion, handover_decision, handover_result, 
+                 persuasion_attempt, persuasion_detail, handover_redecision, 
+                 robbery, round_end, complete
+    """
 
 def analyze_regression_logs(logs_dict: dict):
     """分析永劫回归日志，提供统计洞察"""
@@ -263,29 +291,58 @@ class APIManager:
 提供 SSE（Server-Sent Events）流式 API：
 
 ```python
-@app.post("/api/run_game")
-async def start_game_endpoint(config: GameConfig):
-    # 接收密码、迭代次数、最大劝说次数等参数
-    # 返回 StreamingResponse，media_type 为 text/event-stream
+@app.get("/api/run_game")
+async def start_game_endpoint(
+    password: str,
+    max_iterations: int = 6,
+    max_persuasions: int = 3
+):
+    """
+    对外暴露的 API 接口 (GET)
+    
+    参数:
+    - password: 访问密码（必须）
+    - max_iterations: 迭代次数，默认6
+    - max_persuasions: 最大劝说次数，默认3
+    
+    返回 StreamingResponse，media_type 为 text/event-stream
+    """
 ```
 
-请求格式：
-```json
-{
-  "password": "Amphoreus2026",
-  "max_iterations": 6,
-  "max_persuasions": 3
-}
+**辅助函数**：
+```python
+def extract_reason_from_message(message: str) -> str:
+    """
+    从消息中提取 reason 字段
+    如果消息是 JSON 格式且包含 reason 字段，则返回 reason 的内容
+    否则返回原消息
+    """
 ```
 
-响应格式（SSE）：
+**请求格式：**
 ```
-data: 🚀 启动永劫回归测试程序
+GET /api/run_game?password=33550336@Neikos496&max_iterations=6&max_persuasions=3
+```
 
-data: 🔄 第 1 轮永劫回归开始
+**响应格式（SSE）：**
+```
+data: >>> 启动永劫回归测试程序
+
+data: >>> [第 1 轮永劫回归开始]
+
+data: >>> [缇宝] 发布神谕:
+data: {神谕内容}
+
+data: >>> [遐蝶] 决定: 逐火
+data:    理由: {reason字段内容}
 
 data: [DONE]
 ```
+
+**输出格式说明：**
+- 使用 `>>>` 作为前缀标识，保持 CRT 终端风格
+- JSON 格式的决策理由会自动提取 `reason` 字段内容
+- 所有 SSE 事件都以 `data: ` 开头
 
 ## 决策解析约定
 
@@ -333,6 +390,12 @@ python main/stage.py
 
 # 测试 API 配置
 python main/config/api_config.py
+
+# 启动后端服务
+python app/server.py
+
+# 启动前端开发服务器
+cd frontend && npm run dev
 ```
 
 ### 调试技巧
