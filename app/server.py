@@ -76,7 +76,7 @@ async def run_game_stream(password: str, max_iterations: int = 6, max_persuasion
     将生成器产生的事件转换为 SSE 格式返回给前端
     """
     # 1. 简单的密码校验
-    if password != "Amphoreus2026":
+    if password != "33550336@Neikos496":
         yield "data: 【系统拦截】访问口令错误，神谕未响应。\n\n"
         return
     
