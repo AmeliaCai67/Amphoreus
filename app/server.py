@@ -30,6 +30,44 @@ class GameConfig(BaseModel):
     max_persuasions: int = 3
 
 
+def extract_reason_from_message(message: str) -> str:
+    """
+    从消息中提取 reason 字段
+    如果消息是 JSON 格式且包含 reason 字段，则返回 reason 的内容
+    否则返回原消息
+    """
+    if not message or not isinstance(message, str):
+        return message or ""
+    
+    message = message.strip()
+    
+    # 检查是否是 JSON 格式（以 { 开头）
+    if message.startswith('{') and 'reason' in message:
+        try:
+            import json
+            import re
+            
+            # 尝试提取 reason 字段的值
+            # 匹配 'reason': '...' 或 "reason": "..." 格式
+            pattern = r"['\"]reason['\"]\s*:\s*['\"](.+?)['\"](?:,|\})"
+            match = re.search(pattern, message, re.DOTALL)
+            if match:
+                return match.group(1).strip()
+            
+            # 如果正则提取失败，尝试 json 解析
+            try:
+                data = json.loads(message)
+                if isinstance(data, dict) and 'reason' in data:
+                    return str(data['reason']).strip()
+            except json.JSONDecodeError:
+                pass
+                
+        except Exception:
+            pass
+    
+    return message
+
+
 async def run_game_stream(password: str, max_iterations: int = 6, max_persuasions: int = 3):
     """
     运行永劫回归游戏流
@@ -77,8 +115,10 @@ async def run_game_stream(password: str, max_iterations: int = 6, max_persuasion
                 decision = event.get('decision', '')
                 message = event.get('message', '')
                 decision_text = "逐火" if decision == '1' else "不逐火"
+                # 提取 reason 字段
+                reason_text = extract_reason_from_message(message)
                 yield f"data: >>> [{char_name}] 决定: {decision_text}\n"
-                yield f"data:    理由: {message[:200]}{'...' if len(message) > 200 else ''}\n\n"
+                yield f"data:    理由: {reason_text[:200]}{'...' if len(reason_text) > 200 else ''}\n\n"
             
             elif event_type == 'fire_result':
                 result = event.get('result', {})
@@ -96,8 +136,10 @@ async def run_game_stream(password: str, max_iterations: int = 6, max_persuasion
                 decision = event.get('decision', '')
                 message = event.get('message', '')
                 decision_text = "交出火种" if decision == '1' else "拒绝交出"
+                # 提取 reason 字段
+                reason_text = extract_reason_from_message(message)
                 yield f"data: >>> [{char_name}] 回应: {decision_text}\n"
-                yield f"data:    理由: {message[:200]}{'...' if len(message) > 200 else ''}\n\n"
+                yield f"data:    理由: {reason_text[:200]}{'...' if len(reason_text) > 200 else ''}\n\n"
             
             elif event_type == 'persuasion_attempt':
                 attempt = event.get('attempt', 0)
