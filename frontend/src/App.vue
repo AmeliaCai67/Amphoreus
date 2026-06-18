@@ -82,7 +82,7 @@ const startGame = () => {
   }).toString()
 
   // 发起 SSE 连接 (注意替换为你的后端实际地址)
-  eventSource = new EventSource(`http://127.0.0.1:8000/api/run_game?${params}`)
+  eventSource = new EventSource(`/api/run_game?${params}`)
 
   // 接收到后端的数据
   eventSource.onmessage = (event) => {
