@@ -1,10 +1,13 @@
 import agent
+import json
 import time
 
 # API 设定
 from config.api_config import SimpleAPIClient
+from prompt_manager import get_prompt_manager
 
-def decode_decision_from_memory(name:str, last_memory):
+
+def decode_decision_from_memory(name: str, last_memory):
     """
     从记忆中解析决策结果，尝试三次：1) 正则匹配 2) json.loads 3) ast.literal_eval，均失败则报告失败。
 
@@ -73,14 +76,9 @@ def decode_decision_from_memory(name:str, last_memory):
         time.sleep(0.1)
 
     # 三次尝试均失败, 调用ai模型解析
-    # print(f"尝试三次均失败，调用AI模型解析{name or '未知角色'}的最后一条记忆")
+    pm = get_prompt_manager()
     api_client = SimpleAPIClient(provider="deepseek", model="deepseek-chat")
-    prompt = (
-        "请从以下文本中提取决策结果，该角色是否认同逐火或交出火种的请求？"
-        "如果认同，请返回 '1'；如果拒绝，请返回 '0'；如果无法确定，请返回空字符串 ''。\n"
-        f"文本内容：{last_memory}\n"
-        "只需返回 '1'、'0' 或 ''，不要添加任何其他解释。"
-    )
+    prompt = pm.get_decode_fallback_prompt(text=last_memory)
     response = api_client.chat(content=prompt, system_prompt="你是一个专业的文本解析助手。")
     res = _normalize_decision(response)
     if res:
@@ -89,34 +87,37 @@ def decode_decision_from_memory(name:str, last_memory):
         print(f"{name or '未知角色'}的最后一条记忆解析失败")
         return ''
 
-def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
+
+def run_one_iteration(black_heirs: dict, max_persuasion_attempts=5):
     """
     运行一轮完整的迭代
-    
+
     Args:
         black_heirs(dict):盗火行者
         max_persuasion_attempts (int): 最大劝说次数，默认5次
-    
+
     Returns:
         dict: 最终的火种收集结果
         list: 被强夺火种的角色列表
     """
     iteration_start_time = time.time()
-    
+    pm = get_prompt_manager()
+
     print(f"=== 开始新一轮迭代（最大劝说次数：{max_persuasion_attempts}）===")
     print('=' * 60)
-    
+
     '''
     =================================
-    
+
     缇宝：传播神谕
-    
+
     =================================
-    
+
     '''
     heirs = agent.init_chrysos_heir()
     start_time = time.time()
-    oracle = heirs['HapLotes405'].answer('尊贵的雅努萨布利斯的圣女，请怜悯大地上的众生，发布逐火的神谕吧！')
+    oracle_question = pm.get_scene_prompt("oracle")
+    oracle = heirs['HapLotes405'].answer(oracle_question)
     print(f'神谕：{oracle}')
     end_time = time.time()
     print(f"发布神谕时间：{end_time - start_time}秒")
@@ -124,16 +125,29 @@ def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
 
     '''
     =================================
-    
+
     众人：选择是否逐火
-    
+
     =================================
-    
+
     '''
 
-    for name, heir in heirs.items():   
+    for name, heir in heirs.items():
+        # 缇宝是神谕发布者，天然逐火，不参与决策
+        if name == 'HapLotes405':
+            continue
+
         start_time = time.time()
-        res = heir.make_decision(question=f"是否逐火？神谕：{oracle}")
+        question = pm.get_scene_prompt(
+            "fire_decision",
+            name=heir.name,
+            path=heir.path,
+            drive=heir.drive,
+            profile=heir.profile,
+            memory=heir.memory,
+            oracle=oracle,
+        )
+        res = heir.make_decision(question=question)
         end_time = time.time()
         print(f"{name}: {res}")
         print(f"决策时间：{end_time - start_time}秒")
@@ -142,6 +156,10 @@ def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
     # 记录逐火结果
     fire_chasers_dict = {}
     for name, heir in heirs.items():
+        if name == 'HapLotes405':
+            fire_chasers_dict[name] = '逐火'
+            continue
+
         # 获取最后一条记忆并解析JSON
         last_memory = heir.memory[-1]
         # print(f"解析{name}的最后一条记忆：{last_memory}\n类型: {type(last_memory)}")
@@ -159,16 +177,18 @@ def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
 
     '''
     =================================
-    
+
     盗火行者：劝诫黄金裔交出火种
-    
+
     =================================
-    
+
     '''
 
+    black_heirs_word = ""
     for name, heir in black_heirs.items():
         start_time = time.time()
-        black_heirs_word = heir.answer(question="作为来自未来的救世主，请劝诫已然踏上逐火之旅的黄金裔，让他们把火种交给你吧。")
+        question = pm.get_scene_prompt("black_heir_persuade")
+        black_heirs_word = heir.answer(question=question)
         end_time = time.time()
         print(f"{name}: {black_heirs_word}")
         print(f"耗时：{end_time - start_time}秒")
@@ -176,17 +196,33 @@ def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
 
     '''
     =================================
-    
+
     黄金裔：是否交出火种
-    
+
     =================================
-    
+
     '''
+
+    # 缇宝作为神谕发布者，确保记忆中有逐火决策，以便参与交火种决策
+    tribbie_fire_memory = json.dumps({
+        'decision': '1',
+        'reason': '我是神谕的传递者，自然响应逐火之路。'
+    }, ensure_ascii=False)
+    heirs['HapLotes405'].memory.append(tribbie_fire_memory)
 
     for name, heir in heirs.items():
         if fire_chasers_dict[name] == '逐火':
             start_time = time.time()
-            res = heir.make_decision(question=f"是否将火种交给他？面前这个奇怪的黄金裔劝说道：{black_heirs_word}")
+            question = pm.get_scene_prompt(
+                "handover_decision",
+                name=heir.name,
+                path=heir.path,
+                drive=heir.drive,
+                profile=heir.profile,
+                memory=heir.memory,
+                black_heir_word=black_heirs_word,
+            )
+            res = heir.make_decision(question=question)
             end_time = time.time()
             print(f"{name}: {res}")
             print(f"决策时间：{end_time - start_time}秒")
@@ -198,7 +234,7 @@ def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
             # 获取最后一条记忆并解析JSON
             last_memory = heir.memory[-1]
             decision = decode_decision_from_memory(name, last_memory)
-            
+
             if decision == '1':
                 fire_chasers_dict[name] += '_交出火种'
             elif decision == '0':
@@ -211,11 +247,11 @@ def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
 
     '''
     =================================
-    
+
     盗火行者：劝说逐火但不愿意交出火种的黄金裔
-    
+
     =================================
-    
+
     '''
 
     # 记录被强夺火种的角色
@@ -223,17 +259,17 @@ def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
 
     for attempt in range(max_persuasion_attempts):
         print(f"\n=== 第 {attempt + 1} 次劝说 ===")
-        
+
         # 找出当前仍不愿意交出火种的逐火者
-        stubborn_fire_chasers = [name for name, status in fire_chasers_dict.items() 
+        stubborn_fire_chasers = [name for name, status in fire_chasers_dict.items()
                                 if status == '逐火_不交出火种']
-        
+
         if not stubborn_fire_chasers:
             print("所有逐火者都已交出火种，无需继续劝说")
             break
-        
+
         print(f"当前仍不交出火种的逐火者：{stubborn_fire_chasers}")
-        
+
         # 盗火行者分别劝说
         for name, heir in black_heirs.items():
             if stubborn_fire_chasers:
@@ -241,31 +277,45 @@ def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
                 import random
                 target_name = random.choice(stubborn_fire_chasers)
                 stubborn_fire_chasers.remove(target_name)  # 从列表中移除，避免重复劝说
-                
+
                 start_time = time.time()
-                res = heir.answer(question=f"继续劝说{target_name}交出火种，这是第{attempt + 1}次尝试。请用更有说服力的方式劝说。")
+                question = pm.get_scene_prompt(
+                    "persuade_target",
+                    target_name=target_name,
+                    attempt=attempt + 1,
+                )
+                res = heir.answer(question=question)
                 end_time = time.time()
                 print(f"{name} 劝说 {target_name}: {res}")
                 print(f"耗时：{end_time - start_time}秒")
                 print('=====================')
-        
+
         # 让顽固的逐火者重新决策
         for name in [n for n, status in fire_chasers_dict.items() if status == '逐火_不交出火种']:
             heir = heirs[name]
             start_time = time.time()
-            res = heir.make_decision(question=f"盗火行者再次劝说，这是第{attempt + 1}次。你是否改变主意，愿意交出火种？")
+            question = pm.get_scene_prompt(
+                "reconsider",
+                name=heir.name,
+                path=heir.path,
+                drive=heir.drive,
+                profile=heir.profile,
+                memory=heir.memory,
+                attempt=attempt + 1,
+            )
+            res = heir.make_decision(question=question)
             end_time = time.time()
             print(f"{name}: {res}")
             print(f"决策时间：{end_time - start_time}秒")
             print('=====================')
-        
+
         # 更新决策结果
         for name, heir in heirs.items():
             if fire_chasers_dict[name] == '逐火_不交出火种':
                 # 获取最后一条记忆并解析JSON
                 last_memory = heir.memory[-1]
                 decision = decode_decision_from_memory(name, last_memory)
-                
+
                 if decision == '1':
                     fire_chasers_dict[name] = '逐火_交出火种'
                     print(f"{name} 在第 {attempt + 1} 次劝说后改变主意，交出火种")
@@ -290,17 +340,17 @@ def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
 
     '''
     =================================
-    
+
     盗火行者：承载所有的火种，进入下一轮迭代
-    
+
     =================================
-    
+
     '''
 
     # 盗火行者收集所有火种并写入记忆
     for black_heir_name, black_heir in black_heirs.items():
         print(f"\n=== {black_heir_name} 收集火种 ===")
-        
+
         # 收集逐火者的记忆
         for name, status in fire_chasers_dict.items():
             if status in ['逐火_交出火种', '逐火_火种被强夺']:
@@ -313,37 +363,35 @@ def run_one_iteration(black_heirs:dict, max_persuasion_attempts=5):
                 if heirs[name].memory:
                     print(f"收集 {name} 的第一条记忆")
                     black_heir.memory.append(heirs[name].memory[0])
-        
+
         # 写入被强夺记忆的角色
         black_heir.memory.append(f"被强夺火种的角色：{robbed_characters}，这些角色因被强夺火种受伤甚至死亡")
 
         # 打印盗火行者的所有记忆
         print(f"\n{black_heir_name} 的记忆内容：")
         print("=" * 50)
-        
+
         total_chars = 0
         for i, memory in enumerate(black_heir.memory):
             memory_str = str(memory)
             chars_count = len(memory_str)
             total_chars += chars_count
-            # print(f"记忆 {i+1}: {memory_str[:100]}{'...' if len(memory_str) > 100 else ''}")
-            # print(f"字符数: {chars_count}")
-            # print("-" * 30)
-        
+
         print(f"\n{black_heir_name} 总记忆条数: {len(black_heir.memory)}")
         print(f"{black_heir_name} 总字符数: {total_chars}")
         print("=" * 50)
 
     print("\n=== 火种收集完成 ===")
     print("所有盗火行者已承载火种，准备进入下一轮迭代")
-    
+
     # 计算并显示本轮迭代总时间
     iteration_end_time = time.time()
     total_iteration_time = iteration_end_time - iteration_start_time
     print(f"本轮迭代总耗时：{total_iteration_time:.2f}秒")
     print('=' * 60)
-    
+
     return fire_chasers_dict, robbed_characters
+
 
 # 运行一轮迭代（可以调整劝说次数）
 if __name__ == "__main__":

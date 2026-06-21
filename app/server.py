@@ -1,6 +1,7 @@
 import asyncio
 import sys
 import os
+from typing import Optional
 
 # 添加 main 目录到模块搜索路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'main'))
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 
 # 导入 main 模块的函数
 import main
+import interactive_game as ig
 
 app = FastAPI()
 
@@ -28,6 +30,21 @@ class GameConfig(BaseModel):
     password: str
     max_iterations: int = 6
     max_persuasions: int = 3
+
+
+# ===== 交互式玩家扮演模式 =====
+
+class InteractiveGameConfig(BaseModel):
+    max_rounds: int = 1
+
+
+class ChooseCharacterRequest(BaseModel):
+    char_id: str
+
+
+class DecisionRequest(BaseModel):
+    decision: str  # "1" 表示接受/逐火/交出，"0" 表示拒绝
+    reason: Optional[str] = None
 
 
 def extract_reason_from_message(message: str) -> str:
@@ -213,6 +230,96 @@ async def start_game_endpoint(
         run_game_stream(password, max_iterations, max_persuasions),
         media_type="text/event-stream"
     )
+
+
+# ===== 交互式玩家扮演模式 API =====
+
+@app.post("/api/game/create")
+async def create_interactive_game(config: InteractiveGameConfig):
+    """
+    创建一局交互式游戏会话
+    
+    参数:
+    - max_rounds: 最大回合数，默认1
+    
+    返回:
+    - session_id: 会话ID
+    - stage: 当前阶段 (created)
+    """
+    session_id = ig.create_session(max_rounds=config.max_rounds)
+    return {
+        "session_id": session_id,
+        "stage": "created",
+        "message": "游戏会话已创建，调用 /api/game/{session_id}/start 开始",
+    }
+
+
+@app.post("/api/game/{session_id}/start")
+async def start_interactive_game(session_id: str):
+    """
+    开始游戏：返回开场文案、神谕和可选角色列表
+    """
+    session = ig.get_session(session_id)
+    return session.start()
+
+
+@app.post("/api/game/{session_id}/choose")
+async def choose_character(session_id: str, req: ChooseCharacterRequest):
+    """
+    玩家选择扮演的角色
+    
+    参数:
+    - char_id: 角色ID（不能是缇宝 HapLotes405）
+    """
+    session = ig.get_session(session_id)
+    return session.choose_character(req.char_id)
+
+
+@app.post("/api/game/{session_id}/fire_decision")
+async def submit_fire_decision(session_id: str, req: DecisionRequest):
+    """
+    玩家提交逐火决策
+    
+    当玩家初次选择不逐火时，缇宝和阿格莱雅会劝说一轮，
+    此时 stage 变为 "fire_persuasion"，前端需再次调用本接口提交二次决策。
+    
+    参数:
+    - decision: "1" 表示逐火，"0" 表示不逐火
+    - reason: 决策理由（可选，不填由AI生成）
+    """
+    session = ig.get_session(session_id)
+    return session.submit_fire_decision(req.decision, req.reason)
+
+
+@app.post("/api/game/{session_id}/handover_decision")
+async def submit_handover_decision(session_id: str, req: DecisionRequest):
+    """
+    玩家提交交火种决策
+    
+    参数:
+    - decision: "1" 表示交出火种，"0" 表示拒绝
+    - reason: 决策理由（可选，不填由AI生成）
+    """
+    session = ig.get_session(session_id)
+    return session.submit_handover_decision(req.decision, req.reason)
+
+
+@app.post("/api/game/{session_id}/continue")
+async def continue_interactive_game(session_id: str):
+    """
+    回合结束后继续下一回合，或结束游戏
+    """
+    session = ig.get_session(session_id)
+    return session.continue_game()
+
+
+@app.get("/api/game/{session_id}/state")
+async def get_interactive_game_state(session_id: str):
+    """
+    获取当前游戏状态
+    """
+    session = ig.get_session(session_id)
+    return session._state_response()
 
 
 if __name__ == "__main__":

@@ -54,6 +54,7 @@ Amphoreus/
 │   └── vite.config.js
 ├── main/                           # 核心模拟逻辑
 │   ├── main.py                     # 程序入口，永劫回归循环控制
+│   ├── interactive_game.py         # 玩家扮演交互模式状态机
 │   ├── agent.py                    # Agent 类定义与行为逻辑
 │   ├── stage.py                    # 单轮"舞台"流程管理
 │   ├── data_export.py              # 数据导出为 JSON
@@ -179,13 +180,8 @@ python main/data_export.py
 class Chrysos_Heir:
     """黄金裔 Agent 类"""
     
-    def __init__(self, name, path, drive, profile, state, memory):
-        # name: 角色名
-        # path: 路径（死亡、负世、浪漫等）
-        # drive: 原动力（平和、憎恨、节制等）
-        # profile: 角色背景描述
-        # state: 精神状态 0-5
-        # memory: 记忆列表
+    def __init__(self, char_id, client_provider="deepseek", client_model="deepseek-chat"):
+        # char_id: 角色 ID，对应 prompts/characters/*.yaml
     
     def answer(self, question):      # 对话响应
     def reflect(self):               # 自我反思
@@ -195,6 +191,8 @@ class Chrysos_Heir:
 主要函数：
 - `init_chrysos_heir()` - 初始化 10 位黄金裔
 - `init_black_heir()` - 初始化盗火行者
+
+角色配置已从 `agent.py` 迁移到 `prompts/characters/*.yaml`，由 `PromptManager` 统一管理。
 
 **角色 ID 映射**（`CHARACTER_NAMES`）：
 
@@ -208,18 +206,69 @@ class Chrysos_Heir:
 | HubRis504 | 刻律德菈 | 律法 | 支配 |
 | EleOs252 | 风堇 | 天空 | 治愈 |
 | ApoRia432 | 海瑟音 | 海洋 | 自否 |
-| SkeMma720 | 那刻夏 | 理性 | 批判 |
+| SkeMma720 | 阿那克萨戈拉斯 | 理性 | 批判 |
 | OreXis945 | 赛飞儿 | 诡计 | 渴望 |
 | Black_NeiKo | 盗火行者·白厄 | 负世 | 憎恨 |
+
+#### 1.5 `prompt_manager.py` - 提示词与角色配置管理器
+
+`PromptManager` 负责从 `prompts/` 目录加载所有提示词和角色配置，并向 `agent.py`、`stage.py`、`main.py` 提供格式化后的提示词。
+
+```python
+from prompt_manager import get_prompt_manager
+
+pm = get_prompt_manager()
+
+# 获取角色配置
+config = pm.get_character("EpieiKeia216")
+
+# 获取渲染后的系统提示词
+system = pm.get_system_prompt("EpieiKeia216", memory=[...])
+
+# 获取场景问题
+question = pm.get_scene_prompt("fire_decision", oracle="...", name="遐蝶", path="死亡", drive="平和")
+```
+
+**目录结构**：
+
+```
+prompts/
+├── base/                      # 基础提示词模板
+│   ├── system.md              # 黄金裔系统提示词
+│   ├── black_heir_system.md   # 盗火行者系统提示词
+│   ├── decision_format.md     # 决策输出格式
+│   ├── self_reflection.md     # 自我反思引导
+│   └── decode_fallback.md     # 决策解析兜底提示
+├── scenes/                    # 场景问题提示词
+│   ├── oracle.md
+│   ├── intro.md
+│   ├── fire_decision.md
+│   ├── black_heir_persuade.md
+│   ├── handover_decision.md
+│   ├── persuade_target.md
+│   ├── reconsider.md
+│   ├── player_fire_decision.md
+│   ├── player_handover_decision.md
+│   └── fire_persuade_player.md
+└── characters/                # 角色配置（YAML）
+    ├── EpieiKeia216.yaml
+    ├── ...
+    └── black_heir/
+        └── Black_NeiKo.yaml
+```
+
+**模板变量**：
+- 角色配置中可使用 `{name}`、`{path}`、`{drive}`、`{profile}`、`{memory}`
+- 场景提示词中可使用 `{name}`、`{path}`、`{drive}`、`{profile}`、`{memory}`、`{oracle}`、`{black_heir_word}`、`{target_name}`、`{attempt}` 等
 
 #### 2. `stage.py` - 舞台流程
 
 单轮迭代的核心流程：
 
 1. **神谕发布** - 缇宝（HapLotes405）发布逐火神谕
-2. **逐火决策** - 每位黄金裔决定是否逐火
+2. **逐火决策** - 除缇宝外的每位黄金裔决定是否逐火（缇宝作为神谕发布者天然逐火）
 3. **盗火行者劝诫** - 盗火行者劝说逐火者交出火种
-4. **火种交托** - 逐火者决定是否交出火种
+4. **火种交托** - 所有逐火者（含缇宝）决定是否交出火种
 5. **顽固者劝说** - 对拒绝者进行多轮劝说
 6. **强夺火种** - 仍拒绝者被强夺火种
 7. **记忆承载** - 盗火行者收集所有火种，进入下一轮
@@ -344,6 +393,74 @@ data: [DONE]
 - JSON 格式的决策理由会自动提取 `reason` 字段内容
 - 所有 SSE 事件都以 `data: ` 开头
 
+### 交互式玩家扮演 API
+
+除了自动运行的 SSE 模式，还提供一套有状态的多 Endpoint API，让玩家扮演其中一位黄金裔（除缇宝外），在关键决策点介入。
+
+**流程**：
+1. `POST /api/game/create` 创建会话
+2. `POST /api/game/{session_id}/start` 开始游戏，返回开场文案、神谕、可选角色
+3. `POST /api/game/{session_id}/choose` 玩家选择扮演角色
+4. `POST /api/game/{session_id}/fire_decision` 玩家提交逐火决策（可填写理由）
+   - 若玩家选择不逐火，缇宝与阿格莱雅会各劝一轮，stage 变为 `fire_persuasion`
+   - 前端需再次调用本接口提交二次决策
+5. `POST /api/game/{session_id}/handover_decision` 玩家提交交火种决策（可填写理由）
+6. `POST /api/game/{session_id}/continue` 回合结束后继续下一回合
+7. `GET /api/game/{session_id}/state` 随时查询当前状态
+
+**请求示例**：
+```bash
+# 创建会话
+curl -X POST http://localhost:8000/api/game/create \
+  -H "Content-Type: application/json" \
+  -d '{"max_rounds": 1}'
+
+# 开始游戏
+curl -X POST http://localhost:8000/api/game/{session_id}/start
+
+# 选择角色
+curl -X POST http://localhost:8000/api/game/{session_id}/choose \
+  -H "Content-Type: application/json" \
+  -d '{"char_id": "NeiKos496"}'
+
+# 提交逐火决策（带理由）
+curl -X POST http://localhost:8000/api/game/{session_id}/fire_decision \
+  -H "Content-Type: application/json" \
+  -d '{"decision": "1", "reason": "我是哀丽秘榭的白厄。"}'
+
+# 提交交火种决策（不带理由，由AI生成）
+curl -X POST http://localhost:8000/api/game/{session_id}/handover_decision \
+  -H "Content-Type: application/json" \
+  -d '{"decision": "0"}'
+```
+
+**统一响应结构**：
+```json
+{
+  "session_id": "...",
+  "stage": "fire_decision",
+  "round": 1,
+  "player_char_id": "NeiKos496",
+  "events": [...],
+  "choices": {
+    "can_decide": true,
+    "decision_type": "fire_decision",
+    "target_char": "NeiKos496",
+    "target_name": "白厄"
+  },
+  "fire_chasers_dict": {...},
+  "robbed_characters": []
+}
+```
+
+**核心文件**：
+- `main/interactive_game.py`：游戏状态机与业务逻辑
+- `app/server.py`：新增 7 个 REST endpoints
+- `prompts/scenes/intro.md`：开场文案
+- `prompts/scenes/player_fire_decision.md`：玩家逐火决策提示词
+- `prompts/scenes/player_handover_decision.md`：玩家交火种决策提示词
+- `prompts/scenes/fire_persuade_player.md`：缇宝/阿格莱雅劝说玩家逐火提示词
+
 ## 决策解析约定
 
 Agent 的决策通过 `make_decision` 方法返回格式化的 JSON：
@@ -402,15 +519,26 @@ cd frontend && npm run dev
 
 1. **查看日志**：API 调用会输出响应时间和错误信息
 2. **调整迭代次数**：在 `main.py` 或 Web API 参数中调整
-3. **切换 API 提供商**：修改 `agent.py` 中的客户端初始化
+3. **切换 API 提供商**：修改 `agent.py` 中 `Chrysos_Heir` 的默认 `client_provider`/`client_model`
 
 ## 扩展开发
 
 ### 添加新角色
 
-1. 在 `agent.py` 的 `heir_profiles` 中添加角色配置
-2. 更新 `CHARACTER_NAMES` 字典
-3. 在 `characters/entity_settings.json` 中添加角色设定
+1. 在 `prompts/characters/` 下新增 `{char_id}.yaml`：
+   ```yaml
+   id: NewChar001
+   name: 新角色名
+   path: 命途
+   drive: 原动力
+   profile: >
+     角色背景描述...
+   memory:
+     - 初始记忆1
+     - 初始记忆2
+   ```
+2. 如需覆盖基础系统提示词，可在 YAML 中添加 `system_override: | ...`
+3. `CHARACTER_NAMES` 会自动从 `PromptManager` 生成，无需手动维护
 
 ### 切换 API 提供商
 

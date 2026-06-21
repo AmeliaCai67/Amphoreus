@@ -73,7 +73,7 @@ class SimpleAPIClient:
     def chat(self, 
              content: str, 
              system_prompt: str = None,
-             temperature: float = 1.5,
+             temperature: float = 0.7,
              max_tokens: int = 1000,
              stream: bool = False) -> str:
         """
