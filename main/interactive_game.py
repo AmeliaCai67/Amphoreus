@@ -262,6 +262,14 @@ class GameSession:
                 "target_name": pm.get_character_names().get(self.player_char_id, self.player_char_id),
                 "message": "缇宝和阿格莱雅劝说了你。你是否改变主意，决定逐火？",
             }
+        elif self.stage == "handover_persuasion":
+            choices = {
+                "can_decide": True,
+                "decision_type": "handover_persuasion_decision",
+                "target_char": self.player_char_id,
+                "target_name": pm.get_character_names().get(self.player_char_id, self.player_char_id),
+                "message": "盗火行者劝说了你。你是否改变主意，交出火种？",
+            }
         elif self.stage == "round_end":
             choices = {
                 "can_decide": True,
@@ -443,8 +451,7 @@ class GameSession:
         """玩家最终不逐火，AI 自动完成本回合剩余流程"""
         self._run_black_heir_persuade()
         self._run_ai_handover_decisions()
-        self._run_persuasion_and_robbery()
-        self._collect_memories()
+        self._run_handover_persuasion_round()
         self.stage = "round_end"
 
     def submit_handover_decision(self, decision, reason: Optional[str] = None, max_persuasion_attempts: int = 3) -> dict:
@@ -498,10 +505,56 @@ class GameSession:
         # AI 控制其他逐火者做交火种决策
         self._run_ai_handover_decisions()
 
-        # 劝说、强夺、收集记忆
-        self._run_persuasion_and_robbery(max_attempts=max_persuasion_attempts)
-        self._collect_memories()
+        # 盗火行者劝说，AI 重新决策；若玩家被劝说则进入 handover_persuasion
+        self._run_handover_persuasion_round(max_attempts=max_persuasion_attempts)
 
+        return self._state_response()
+
+    def submit_handover_redecision(self, decision, reason: Optional[str] = None) -> dict:
+        """盗火行者劝说后，玩家再次提交交火种决策"""
+        if self.stage != "handover_persuasion":
+            raise ValueError(f"当前不是交火种二次决策阶段: {self.stage}")
+
+        player_decision = self._decode_player_decision(decision)
+        player_heir = self._get_player_heir()
+        pm = get_prompt_manager()
+        char_names = pm.get_character_names()
+
+        # 处理玩家二次决策理由
+        if reason is None or reason.strip() == "":
+            question = pm.get_scene_prompt(
+                "handover_decision",
+                name=player_heir.name,
+                path=player_heir.path,
+                drive=player_heir.drive,
+                profile=player_heir.profile,
+                memory=player_heir.memory,
+                black_heir_word=self.black_heir_word,
+            )
+            player_heir.make_decision(question=question)
+            ai_reason = extract_reason_from_message(player_heir.memory[-1])
+            reason = ai_reason if ai_reason else "我做出了自己的选择。"
+            memory_entry = self._format_decision_memory(player_decision, reason)
+            player_heir.memory[-1] = memory_entry
+        else:
+            memory_entry = self._format_decision_memory(player_decision, reason)
+            player_heir.memory.append(memory_entry)
+
+        self._add_event(
+            "handover_redecision",
+            char_id=self.player_char_id,
+            char_name=char_names.get(self.player_char_id, self.player_char_id),
+            decision=player_decision,
+            decision_text="改变主意，交出火种" if player_decision == "1" else "仍然拒绝",
+            reason=reason,
+            is_player=True,
+        )
+
+        if player_decision == "1":
+            self.fire_chasers_dict[self.player_char_id] = "逐火_交出火种"
+
+        # 结算强夺与记忆
+        self._run_robbery_and_collect()
         self.stage = "round_end"
         return self._state_response()
 
@@ -707,12 +760,40 @@ class GameSession:
                 is_player=False,
             )
 
-    def _run_persuasion_and_robbery(self, max_attempts: int = 3):
-        """劝说顽固者与强夺火种"""
+    def _run_robbery_and_collect(self):
+        """强夺剩余顽固者的火种并收集记忆"""
         pm = get_prompt_manager()
         char_names = pm.get_character_names()
 
-        player_persuaded = False
+        self.robbed_characters = []
+        for char_id, status in self.fire_chasers_dict.items():
+            if status == "逐火_不交出火种":
+                self.fire_chasers_dict[char_id] = "逐火_火种被强夺"
+                self.robbed_characters.append(char_id)
+                self._add_event(
+                    "robbery",
+                    char_id=char_id,
+                    char_name=char_names.get(char_id, char_id),
+                )
+
+        self._add_event(
+            "round_end",
+            round_num=self.round,
+            final_result=self.fire_chasers_dict,
+            robbed_characters=self.robbed_characters,
+        )
+        self._collect_memories()
+
+    def _run_handover_persuasion_round(self, max_attempts: int = 1):
+        """盗火行者劝说顽固者，并让 AI 顽固者重新决策。
+
+        若玩家在被劝说的目标中，则进入 handover_persuasion 阶段等待玩家二次决策；
+        否则直接强夺并结束回合。
+        """
+        pm = get_prompt_manager()
+        char_names = pm.get_character_names()
+
+        player_targeted = False
 
         for attempt in range(max_attempts):
             stubborn = [
@@ -728,15 +809,14 @@ class GameSession:
                 targets=stubborn,
             )
 
-            # 盗火行者劝说顽固者；优先确保玩家至少被劝说一次
+            # 盗火行者劝说顽固者；玩家优先
             for black_heir_id, black_heir in self.black_heirs.items():
                 if not stubborn:
                     break
 
-                # 玩家仍在顽固列表且尚未被劝说时，优先劝说玩家
-                if self.player_char_id in stubborn and not player_persuaded:
+                if self.player_char_id in stubborn:
                     target = self.player_char_id
-                    player_persuaded = True
+                    player_targeted = True
                 else:
                     target = random.choice(stubborn)
 
@@ -756,8 +836,10 @@ class GameSession:
                     message=res,
                 )
 
-            # 顽固者重新决策
+            # AI 顽固者重新决策并记录回复
             for char_id in list(stubborn):
+                if char_id == self.player_char_id:
+                    continue
                 heir = self.heirs[char_id]
                 question = pm.get_scene_prompt(
                     "reconsider",
@@ -770,27 +852,41 @@ class GameSession:
                 )
                 res = heir.make_decision(question=question)
                 decision = stage.decode_decision_from_memory(char_id, heir.memory[-1])
+                self._add_event(
+                    "handover_redecision",
+                    char_id=char_id,
+                    char_name=char_names.get(char_id, char_id),
+                    decision=decision,
+                    decision_text="改变主意，交出火种" if decision == "1" else "仍然拒绝",
+                    message=res,
+                )
                 if decision == "1":
                     self.fire_chasers_dict[char_id] = "逐火_交出火种"
 
-        # 强夺
-        self.robbed_characters = []
-        for char_id, status in self.fire_chasers_dict.items():
-            if status == "逐火_不交出火种":
-                self.fire_chasers_dict[char_id] = "逐火_火种被强夺"
-                self.robbed_characters.append(char_id)
-                self._add_event(
-                    "robbery",
-                    char_id=char_id,
-                    char_name=char_names.get(char_id, char_id),
-                )
-
-        self._add_event(
-            "round_end",
-            round_num=self.round,
-            final_result=self.fire_chasers_dict,
-            robbed_characters=self.robbed_characters,
-        )
+        if player_targeted and self.fire_chasers_dict.get(self.player_char_id) == "逐火_不交出火种":
+            # 玩家需要二次决策
+            player_heir = self._get_player_heir()
+            question = pm.get_scene_prompt(
+                "player_handover_decision",
+                name=player_heir.name,
+                path=player_heir.path,
+                drive=player_heir.drive,
+                profile=player_heir.profile,
+                memory=player_heir.memory,
+                black_heir_word=self.black_heir_word,
+            )
+            self._add_event(
+                "handover_question",
+                char_id=self.player_char_id,
+                char_name=char_names.get(self.player_char_id, self.player_char_id),
+                message=question,
+                is_re_decision=True,
+            )
+            self.stage = "handover_persuasion"
+        else:
+            # 无需玩家二次决策，直接结算
+            self._run_robbery_and_collect()
+            self.stage = "round_end"
 
     def _collect_memories(self):
         """盗火行者收集火种记忆"""
@@ -941,22 +1037,33 @@ if __name__ == "__main__":
         # 命令行演示：盗火行者先劝玩家一次，再决定是否强夺
         state = session.submit_handover_decision(decision, reason, max_persuasion_attempts=1)
 
-        # 显示盗火行者劝说与强夺过程
-        persuasion_printed = False
+    # 玩家拒绝交出火种后，盗火行者劝说并等待玩家二次决策
+    while state["stage"] == "handover_persuasion":
+        print("\n===== 盗火行者的劝说 =====")
         for event in state["events"]:
             if event["type"] == "persuasion_attempt":
-                print(f"\n===== 盗火行者第 {event['attempt']} 次劝说 =====")
-                print(f"目标: {', '.join(char_names.get(cid, cid) for cid in event['targets'])}")
-                persuasion_printed = True
+                print(f"\n第 {event['attempt']} 次劝说目标: {', '.join(char_names.get(cid, cid) for cid in event['targets'])}")
             elif event["type"] == "persuasion_detail":
                 print(f"\n[{event['persuader_name']}] 劝说 [{event['target_name']}]:")
                 print(event["message"])
-                persuasion_printed = True
-            elif event["type"] == "robbery":
-                print(f"\n>>> [{event['char_name']}] 的火种被强夺！")
+            elif event["type"] == "handover_redecision" and not event.get("is_player"):
+                print(f"\n[{event['char_name']}] 回应: {event['decision_text']}")
+                print(f"  理由: {extract_reason_from_message(event['message'])}")
 
-        if not persuasion_printed:
-            print("\n>>> 没有顽固者，盗火行者无需劝说。")
+        re_handover_questions = [e for e in state["events"] if e["type"] == "handover_question" and e.get("is_re_decision")]
+        if re_handover_questions:
+            print(f"\n===== 再次决定 =====\n{re_handover_questions[-1]['message']}")
+
+        while True:
+            decision = input("你的选择（1=交出火种，0=仍然拒绝）: ").strip()
+            if decision in ("0", "1"):
+                break
+            print("无效输入，请输入 0 或 1。")
+
+        reason = input("你的理由（直接回车由AI生成）: ").strip() or None
+
+        print("\n>>> 正在提交决策，请稍候...")
+        state = session.submit_handover_redecision(decision, reason)
 
     # 最终结果
     print("\n===== 本轮最终结果 =====")

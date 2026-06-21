@@ -405,6 +405,9 @@ data: [DONE]
    - 若玩家选择不逐火，缇宝与阿格莱雅会各劝一轮，stage 变为 `fire_persuasion`
    - 前端需再次调用本接口提交二次决策
 5. `POST /api/game/{session_id}/handover_decision` 玩家提交交火种决策（可填写理由）
+   - 若玩家拒绝交出火种，盗火行者会劝说一轮，stage 变为 `handover_persuasion`
+   - 前端需调用 `/api/game/{session_id}/handover_redecision` 提交二次决策
+6. `POST /api/game/{session_id}/handover_redecision` 盗火行者劝说后，玩家再次提交交火种决策
 6. `POST /api/game/{session_id}/continue` 回合结束后继续下一回合
 7. `GET /api/game/{session_id}/state` 随时查询当前状态
 

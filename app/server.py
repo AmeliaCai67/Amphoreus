@@ -296,12 +296,28 @@ async def submit_handover_decision(session_id: str, req: DecisionRequest):
     """
     玩家提交交火种决策
     
+    若玩家拒绝交出火种，盗火行者会劝说一轮，stage 变为 "handover_persuasion"，
+    前端需调用 /api/game/{session_id}/handover_redecision 提交二次决策。
+    
     参数:
     - decision: "1" 表示交出火种，"0" 表示拒绝
     - reason: 决策理由（可选，不填由AI生成）
     """
     session = ig.get_session(session_id)
     return session.submit_handover_decision(req.decision, req.reason)
+
+
+@app.post("/api/game/{session_id}/handover_redecision")
+async def submit_handover_redecision(session_id: str, req: DecisionRequest):
+    """
+    盗火行者劝说后，玩家再次提交交火种决策
+    
+    参数:
+    - decision: "1" 表示改变主意交出火种，"0" 表示仍然拒绝
+    - reason: 决策理由（可选，不填由AI生成）
+    """
+    session = ig.get_session(session_id)
+    return session.submit_handover_redecision(req.decision, req.reason)
 
 
 @app.post("/api/game/{session_id}/continue")
