@@ -440,8 +440,12 @@ class GameSession:
         self._collect_memories()
         self.stage = "round_end"
 
-    def submit_handover_decision(self, decision, reason: Optional[str] = None) -> dict:
-        """玩家提交交火种决策"""
+    def submit_handover_decision(self, decision, reason: Optional[str] = None, max_persuasion_attempts: int = 3) -> dict:
+        """玩家提交交火种决策
+
+        Args:
+            max_persuasion_attempts: 盗火行者劝说顽固者的最大轮数，默认 3
+        """
         if self.stage != "handover_decision":
             raise ValueError(f"当前不是交火种决策阶段: {self.stage}")
 
@@ -488,7 +492,7 @@ class GameSession:
         self._run_ai_handover_decisions()
 
         # 劝说、强夺、收集记忆
-        self._run_persuasion_and_robbery()
+        self._run_persuasion_and_robbery(max_attempts=max_persuasion_attempts)
         self._collect_memories()
 
         self.stage = "round_end"
@@ -696,11 +700,12 @@ class GameSession:
                 is_player=False,
             )
 
-    def _run_persuasion_and_robbery(self):
-        """劝说顽固者与强夺火种（简化版，max_attempts=3）"""
+    def _run_persuasion_and_robbery(self, max_attempts: int = 3):
+        """劝说顽固者与强夺火种"""
         pm = get_prompt_manager()
         char_names = pm.get_character_names()
-        max_attempts = 3
+
+        player_persuaded = False
 
         for attempt in range(max_attempts):
             stubborn = [
@@ -716,25 +721,33 @@ class GameSession:
                 targets=stubborn,
             )
 
-            # 盗火行者随机劝说一个顽固者
+            # 盗火行者劝说顽固者；优先确保玩家至少被劝说一次
             for black_heir_id, black_heir in self.black_heirs.items():
-                if stubborn:
+                if not stubborn:
+                    break
+
+                # 玩家仍在顽固列表且尚未被劝说时，优先劝说玩家
+                if self.player_char_id in stubborn and not player_persuaded:
+                    target = self.player_char_id
+                    player_persuaded = True
+                else:
                     target = random.choice(stubborn)
-                    stubborn.remove(target)
-                    question = pm.get_scene_prompt(
-                        "persuade_target",
-                        target_name=target,
-                        attempt=attempt + 1,
-                    )
-                    res = black_heir.answer(question=question)
-                    self._add_event(
-                        "persuasion_detail",
-                        persuader_id=black_heir_id,
-                        persuader_name=char_names.get(black_heir_id, black_heir_id),
-                        target_id=target,
-                        target_name=char_names.get(target, target),
-                        message=res,
-                    )
+
+                stubborn.remove(target)
+                question = pm.get_scene_prompt(
+                    "persuade_target",
+                    target_name=target,
+                    attempt=attempt + 1,
+                )
+                res = black_heir.answer(question=question)
+                self._add_event(
+                    "persuasion_detail",
+                    persuader_id=black_heir_id,
+                    persuader_name=char_names.get(black_heir_id, black_heir_id),
+                    target_id=target,
+                    target_name=char_names.get(target, target),
+                    message=res,
+                )
 
             # 顽固者重新决策
             for char_id in list(stubborn):
@@ -918,7 +931,8 @@ if __name__ == "__main__":
         reason = input("你的理由（直接回车由AI生成）: ").strip() or None
 
         print("\n>>> 正在提交决策，请稍候...")
-        state = session.submit_handover_decision(decision, reason)
+        # 命令行演示：盗火行者先劝玩家一次，再决定是否强夺
+        state = session.submit_handover_decision(decision, reason, max_persuasion_attempts=1)
 
     # 最终结果
     print("\n===== 本轮最终结果 =====")
