@@ -73,8 +73,15 @@ class GameSession:
     # ------------------------------------------------------------------
 
     def _add_event(self, event_type: str, **kwargs):
-        """添加事件到事件流"""
-        event = {"type": event_type, **kwargs}
+        """添加事件到事件流（对 list/dict 做快照，避免后续修改影响已记录事件）"""
+        event = {"type": event_type}
+        for key, value in kwargs.items():
+            if isinstance(value, list):
+                event[key] = value.copy()
+            elif isinstance(value, dict):
+                event[key] = value.copy()
+            else:
+                event[key] = value
         self.events.append(event)
         return event
 
@@ -933,6 +940,23 @@ if __name__ == "__main__":
         print("\n>>> 正在提交决策，请稍候...")
         # 命令行演示：盗火行者先劝玩家一次，再决定是否强夺
         state = session.submit_handover_decision(decision, reason, max_persuasion_attempts=1)
+
+        # 显示盗火行者劝说与强夺过程
+        persuasion_printed = False
+        for event in state["events"]:
+            if event["type"] == "persuasion_attempt":
+                print(f"\n===== 盗火行者第 {event['attempt']} 次劝说 =====")
+                print(f"目标: {', '.join(char_names.get(cid, cid) for cid in event['targets'])}")
+                persuasion_printed = True
+            elif event["type"] == "persuasion_detail":
+                print(f"\n[{event['persuader_name']}] 劝说 [{event['target_name']}]:")
+                print(event["message"])
+                persuasion_printed = True
+            elif event["type"] == "robbery":
+                print(f"\n>>> [{event['char_name']}] 的火种被强夺！")
+
+        if not persuasion_printed:
+            print("\n>>> 没有顽固者，盗火行者无需劝说。")
 
     # 最终结果
     print("\n===== 本轮最终结果 =====")
