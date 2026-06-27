@@ -9,13 +9,20 @@ main/config/API_KEY.txt
 
 # Python & env
 .venv/
+wfls/
 __pycache__/
 *.py[cod]
 *.pyo
 
-# tooling
+# OS / editor
+.DS_Store
 .vscode/
+
+# tooling
 .pytest_cache/
 coverage/
 dist/
 build/
+
+# runtime logs
+app/server.log
