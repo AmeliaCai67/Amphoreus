@@ -44,14 +44,21 @@ uvicorn
 Amphoreus/
 ├── app/
 │   └── server.py                   # FastAPI Web 服务，提供 SSE 流式 API
-├── frontend/                       # Vue 前端项目
+├── frontend/                       # Vue 前端项目（交互式逐火终端）
 │   ├── index.html                  # 页面入口
 │   ├── src/
 │   │   ├── main.js                 # Vue 挂载点
-│   │   ├── App.vue                 # 核心组件
-│   │   └── style.css               # CRT 终端样式
+│   │   ├── App.vue                 # 流程调度与页面布局
+│   │   ├── style.css               # CRT 终端样式
+│   │   ├── api/
+│   │   │   └── gameApi.js          # 交互式游戏 REST API 封装
+│   │   ├── composables/
+│   │   │   └── useGameSession.js   # 游戏状态机、事件流式渲染、本地缓存
+│   │   └── components/
+│   │       ├── TerminalLog.vue     # 终端风格事件流展示
+│   │       └── ChoicePanel.vue     # Claude Code 风格玩家选择面板
 │   ├── package.json
-│   └── vite.config.js
+│   └── vite.config.js              # Vite 配置（含 /api 开发代理）
 ├── main/                           # 核心模拟逻辑
 │   ├── main.py                     # 程序入口，永劫回归循环控制
 │   ├── interactive_game.py         # 玩家扮演交互模式状态机
@@ -463,6 +470,23 @@ curl -X POST http://localhost:8000/api/game/{session_id}/handover_decision \
 - `prompts/scenes/player_fire_decision.md`：玩家逐火决策提示词
 - `prompts/scenes/player_handover_decision.md`：玩家交火种决策提示词
 - `prompts/scenes/fire_persuade_player.md`：缇宝/阿格莱雅劝说玩家逐火提示词
+
+### 交互式前端
+
+前端已完全切换为「玩家扮演」模式，不再保留纯自动观测的 SSE 入口：
+
+- 进入页面后配置 `max_rounds`，创建有状态会话
+- 根据后端返回的 `stage` 与 `choices` 渲染对应的选择面板
+- 事件流按类型以 CRT 终端风格逐步呈现，模拟「流式」体验，避免玩家觉得卡住
+- 玩家决策理由为可选输入，留空时由后端调用 AI 自动生成
+- 选择面板采用类似 Claude Code 的紧凑按钮风格，并支持 `Y/N/Enter/R` 键盘快捷键
+- `session_id` 保存在 `localStorage`，刷新页面后可自动恢复当前会话
+
+前端核心文件：
+- `frontend/src/composables/useGameSession.js`：状态管理、事件队列、本地缓存
+- `frontend/src/components/TerminalLog.vue`：事件流终端渲染
+- `frontend/src/components/ChoicePanel.vue`：玩家选择面板
+- `frontend/src/api/gameApi.js`：后端交互封装
 
 ## 决策解析约定
 

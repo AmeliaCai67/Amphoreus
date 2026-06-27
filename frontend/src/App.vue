@@ -1,128 +1,145 @@
 <template>
   <div class="app-container">
-    <div v-if="!isStarted" class="config-panel">
+    <!-- 配置面板 -->
+    <div v-if="state.stage === 'config'" class="config-panel">
       <h1 class="glow-text highlight">Amphoreus System</h1>
-      <p class="subtitle">>>> 永劫回归协议 // 待命状态</p>
-      
-      <div class="form-group">
-        <label>访问口令 [PASSWORD]:</label>
-        <input type="password" v-model="config.password" placeholder="请输入口令" />
-      </div>
+      <p class="subtitle">>>> 交互式逐火协议 // 待命状态</p>
 
       <div class="form-group">
-        <label>轮回迭代次数 [ITERATIONS: 1-6]:</label>
-        <input type="number" v-model="config.max_iterations" min="1" max="6" />
+        <label>轮回迭代次数 [MAX_ROUNDS]:</label>
+        <input
+          type="number"
+          v-model.number="configRounds"
+          min="1"
+          max="20"
+          :disabled="isLoading"
+        />
       </div>
 
-      <div class="form-group">
-        <label>最大劝说次数 [PERSUASIONS: 1-3]:</label>
-        <input type="number" v-model="config.max_persuasions" min="1" max="3" />
-      </div>
+      <button @click="handleStart" class="start-btn" :disabled="isLoading">
+        {{ isLoading ? '[ 连接中... ]' : '[ 开始逐火之旅 ]' }}
+      </button>
 
-      <button @click="startGame" class="start-btn">[ 执行启动程序 ]</button>
+      <div v-if="error" class="error-msg">{{ error }}</div>
     </div>
 
-    <div v-else class="terminal-screen" ref="terminalRef">
-      <div class="terminal-header">
-        <span class="highlight">SYS >> CONNECTION ESTABLISHED</span>
-        <button class="stop-btn" @click="stopGame">[ 中止迭代 ]</button>
+    <!-- 游戏主界面 -->
+    <div v-else class="game-screen">
+      <div class="game-header">
+        <span class="highlight">
+          SYS >> ROUND {{ state.round }} / {{ state.max_rounds }}
+        </span>
+        <span v-if="state.player_char_id" class="player-info">
+          化身: {{ charNames[state.player_char_id] || state.player_char_id }}
+        </span>
+        <button class="reset-btn" @click="handleReset">[ 重置 ]</button>
       </div>
-      
-      <div class="log-container">
-        <div v-for="(log, index) in logs" :key="index" class="log-line">
-          {{ log }}
-        </div>
-        <div v-if="isRunning" class="cursor">█</div>
+
+      <TerminalLog
+        :events="displayedEvents"
+        :char-names="charNames"
+      />
+
+      <!-- 流式指示器 -->
+      <div v-if="isStreaming" class="streaming-bar">
+        <span class="cursor">█</span>
+        <span>正在接收神谕数据...</span>
       </div>
+
+      <!-- 加载指示器 -->
+      <div v-else-if="isLoading" class="streaming-bar">
+        <span class="cursor">█</span>
+        <span>等待回应...</span>
+      </div>
+
+      <!-- 交互选择面板 -->
+      <ChoicePanel
+        v-if="isWaitingForInput"
+        :choices="state.choices"
+        :stage="state.stage"
+        :loading="isLoading"
+        v-model="reason"
+        @choose-character="handleChooseCharacter"
+        @fire-decision="handleFireDecision"
+        @handover-decision="handleHandoverDecision"
+        @continue-round="handleContinue"
+        @reset-game="handleReset"
+      />
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, onMounted } from 'vue'
 
-// 状态管理
-const isStarted = ref(false)
-const isRunning = ref(false)
-const logs = ref([])
-const terminalRef = ref(null)
-let eventSource = null
+import TerminalLog from './components/TerminalLog.vue'
+import ChoicePanel from './components/ChoicePanel.vue'
+import { useGameSession } from './composables/useGameSession.js'
 
-// 配置表单数据
-const config = ref({
-  password: '',
-  max_iterations: 6,
-  max_persuasions: 3
+const {
+  state,
+  displayedEvents,
+  charNames,
+  isStreaming,
+  isLoading,
+  error,
+  reason,
+  isWaitingForInput,
+  tryRestoreSession,
+  startGame,
+  chooseCharacter,
+  submitFireDecision,
+  submitHandoverDecision,
+  submitHandoverRedecision,
+  continueRound,
+  resetGame,
+} = useGameSession()
+
+const configRounds = ref(1)
+
+onMounted(async () => {
+  const restored = await tryRestoreSession()
+  if (!restored) {
+    configRounds.value = state.value.max_rounds || 1
+  }
 })
 
-// 自动滚动到终端底部
-const scrollToBottom = async () => {
-  await nextTick() // 等待 DOM 更新完成
-  if (terminalRef.value) {
-    terminalRef.value.scrollTop = terminalRef.value.scrollHeight
+async function handleStart() {
+  await startGame(configRounds.value)
+}
+
+async function handleChooseCharacter(char_id) {
+  await chooseCharacter(char_id)
+}
+
+async function handleFireDecision(decision) {
+  if (state.value.stage === 'fire_persuasion') {
+    await submitFireDecision(decision)
+  } else {
+    await submitFireDecision(decision)
   }
 }
 
-// 启动游戏逻辑
-const startGame = () => {
-  if (!config.value.password) {
-    alert("请输入访问口令！")
-    return
-  }
-  
-  isStarted.value = true
-  isRunning.value = true
-  logs.value = [] // 清空旧日志
-  
-  // 组装 URL 参数 (配合后端的 GET 请求)
-  const params = new URLSearchParams({
-    password: config.value.password,
-    max_iterations: config.value.max_iterations,
-    max_persuasions: config.value.max_persuasions
-  }).toString()
-
-  // 发起 SSE 连接 (注意替换为你的后端实际地址)
-  eventSource = new EventSource(`/api/run_game?${params}`)
-
-  // 接收到后端的数据
-  eventSource.onmessage = (event) => {
-    if (event.data === "[DONE]") {
-      isRunning.value = false
-      eventSource.close()
-      logs.value.push(">>> 永劫回归迭代已完成。")
-      scrollToBottom()
-      return
-    }
-    
-    // 将接收到的数据加入日志数组
-    logs.value.push(event.data)
-    scrollToBottom()
-  }
-
-  // 处理连接错误
-  eventSource.onerror = (error) => {
-    console.error("SSE Error:", error)
-    logs.value.push(">>> [系统警告] 信号连接丢失。")
-    isRunning.value = false
-    eventSource.close()
+async function handleHandoverDecision(decision) {
+  if (state.value.stage === 'handover_persuasion') {
+    await submitHandoverRedecision(decision)
+  } else {
+    await submitHandoverDecision(decision)
   }
 }
 
-// 强行中止
-const stopGame = () => {
-  if (eventSource) {
-    eventSource.close()
-  }
-  isRunning.value = false
-  logs.value.push(">>> [系统警告] 强制手动阻断。")
-  setTimeout(() => {
-    isStarted.value = false // 2秒后退回配置页
-  }, 2000)
+async function handleContinue() {
+  await continueRound()
 }
+
+function handleReset() {
+  resetGame()
+  configRounds.value = 1
+}
+
 </script>
 
 <style scoped>
-/* 这个区域只对 App.vue 生效 */
 .app-container {
   display: flex;
   justify-content: center;
@@ -131,17 +148,20 @@ const stopGame = () => {
   padding: 20px;
 }
 
-/* === 配置面板样式 === */
 .config-panel {
-  background: rgba(13, 17, 29, 0.8);
+  background: rgba(13, 17, 29, 0.85);
   border: 1px solid var(--border-color);
   padding: 40px;
   border-radius: 8px;
-  box-shadow: 0 0 20px rgba(0, 255, 255, 0.1);
-  width: 400px;
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.08);
+  width: 420px;
 }
 
-.subtitle { margin-bottom: 30px; opacity: 0.7; font-size: 0.9em; }
+.subtitle {
+  margin-bottom: 30px;
+  opacity: 0.7;
+  font-size: 0.9em;
+}
 
 .form-group {
   margin-bottom: 20px;
@@ -162,7 +182,6 @@ const stopGame = () => {
   padding: 10px;
   font-family: inherit;
   outline: none;
-  transition: all 0.3s;
 }
 
 .form-group input:focus {
@@ -182,51 +201,73 @@ const stopGame = () => {
   transition: all 0.3s;
 }
 
-.start-btn:hover {
+.start-btn:hover:not(:disabled) {
   background: var(--text-highlight);
   color: var(--bg-color-dark);
 }
 
-/* === 终端屏幕样式 === */
-.terminal-screen {
+.start-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error-msg {
+  margin-top: 16px;
+  color: #ff4d4d;
+  font-size: 0.85em;
+}
+
+.game-screen {
   width: 100%;
-  max-width: 900px;
-  height: 85vh;
-  background: rgba(0, 0, 0, 0.4);
+  max-width: 960px;
+  height: 90vh;
+  background: rgba(0, 0, 0, 0.35);
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  padding: 20px;
-  overflow-y: auto; /* 允许滚动 */
-  box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.7);
 }
 
-.terminal-header {
+.game-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   border-bottom: 1px dashed var(--border-color);
-  padding-bottom: 10px;
-  margin-bottom: 20px;
+  padding: 14px 16px;
+  font-size: 0.9em;
 }
 
-.stop-btn {
+.player-info {
+  color: var(--text-primary);
+  opacity: 0.85;
+}
+
+.reset-btn {
   background: transparent;
   color: var(--text-warn);
   border: none;
   cursor: pointer;
   font-family: inherit;
 }
-.stop-btn:hover { text-decoration: underline; }
 
-.log-line {
-  margin-bottom: 8px;
-  line-height: 1.5;
-  white-space: pre-wrap; /* 保持后端传来的换行和空格 */
+.reset-btn:hover {
+  text-decoration: underline;
 }
 
-/* 闪烁光标特效 */
+.streaming-bar {
+  padding: 8px 16px;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-highlight);
+  font-size: 0.85em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .cursor {
   display: inline-block;
-  color: var(--text-highlight);
   animation: blink 1s step-end infinite;
 }
 
@@ -235,7 +276,6 @@ const stopGame = () => {
   50% { opacity: 0; }
 }
 
-/* 自定义滚动条 */
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-color); }
