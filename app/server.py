@@ -27,7 +27,6 @@ app.add_middleware(
 
 # 定义配置参数模型（用于文档）
 class GameConfig(BaseModel):
-    password: str
     max_iterations: int = 6
     max_persuasions: int = 3
 
@@ -85,19 +84,14 @@ def extract_reason_from_message(message: str) -> str:
     return message
 
 
-async def run_game_stream(password: str, max_iterations: int = 6, max_persuasions: int = 3):
+async def run_game_stream(max_iterations: int = 6, max_persuasions: int = 3):
     """
     运行永劫回归游戏流
     
     调用 main.py 中的 eternal_regression_realtime_streaming 函数，
     将生成器产生的事件转换为 SSE 格式返回给前端
     """
-    # 1. 简单的密码校验
-    if password != "33550336@Neikos496":
-        yield "data: 【系统拦截】访问口令错误，神谕未响应。\n\n"
-        return
-    
-    # 2. 启动游戏流
+    # 启动游戏流
     yield "data: >>> 启动永劫回归测试程序\n\n"
     yield f"data: >>> === 开始永劫回归测试，共 {max_iterations} 轮迭代 ===\n\n"
     
@@ -212,7 +206,6 @@ async def run_game_stream(password: str, max_iterations: int = 6, max_persuasion
 
 @app.get("/api/run_game")
 async def start_game_endpoint(
-    password: str,
     max_iterations: int = 6,
     max_persuasions: int = 3
 ):
@@ -220,14 +213,13 @@ async def start_game_endpoint(
     对外暴露的 API 接口 (GET)
     
     参数:
-    - password: 访问密码（必须）
     - max_iterations: 迭代次数，默认6
     - max_persuasions: 最大劝说次数，默认3
     
     返回 StreamingResponse，media_type 为 text/event-stream
     """
     return StreamingResponse(
-        run_game_stream(password, max_iterations, max_persuasions),
+        run_game_stream(max_iterations, max_persuasions),
         media_type="text/event-stream"
     )
 
