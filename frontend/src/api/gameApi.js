@@ -2,12 +2,29 @@
  * gameApi.js - 交互式逐火之旅后端 API 封装
  *
  * 后端提供有状态 REST API，前端通过 session_id 推进游戏流程。
+ * cloud 分支所有接口均需携带访问口令 password。
  */
 
 const API_BASE = '/api'
 
+let apiPassword = ''
+
+export function setApiPassword(password) {
+  apiPassword = password
+}
+
+export function getApiPassword() {
+  return apiPassword
+}
+
+function buildUrl(url) {
+  if (!apiPassword) return `${API_BASE}${url}`
+  const separator = url.includes('?') ? '&' : '?'
+  return `${API_BASE}${url}${separator}password=${encodeURIComponent(apiPassword)}`
+}
+
 async function request(url, options = {}) {
-  const res = await fetch(`${API_BASE}${url}`, {
+  const res = await fetch(buildUrl(url), {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   })

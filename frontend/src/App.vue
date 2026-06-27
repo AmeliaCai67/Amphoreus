@@ -16,7 +16,17 @@
         />
       </div>
 
-      <button @click="handleStart" class="start-btn" :disabled="isLoading">
+      <div class="form-group">
+        <label>访问口令 [PASSWORD]:</label>
+        <input
+          type="password"
+          v-model="configPassword"
+          placeholder="请输入神谕访问口令"
+          :disabled="isLoading"
+        />
+      </div>
+
+      <button @click="handleStart" class="start-btn" :disabled="isLoading || !configPassword">
         {{ isLoading ? '[ 连接中... ]' : '[ 开始逐火之旅 ]' }}
       </button>
 
@@ -96,16 +106,20 @@ const {
 } = useGameSession()
 
 const configRounds = ref(1)
+const configPassword = ref('')
 
 onMounted(async () => {
   const restored = await tryRestoreSession()
   if (!restored) {
     configRounds.value = state.value.max_rounds || 1
+    configPassword.value = state.value.password || ''
+  } else {
+    configPassword.value = state.value.password || ''
   }
 })
 
 async function handleStart() {
-  await startGame(configRounds.value)
+  await startGame(configRounds.value, configPassword.value)
 }
 
 async function handleChooseCharacter(char_id) {

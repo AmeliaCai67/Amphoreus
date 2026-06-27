@@ -1,7 +1,8 @@
 import { ref, computed, nextTick } from 'vue'
-import { gameApi } from '../api/gameApi.js'
+import { gameApi, setApiPassword, getApiPassword } from '../api/gameApi.js'
 
 const STORAGE_KEY = 'amphoreus_session_id'
+const PASSWORD_STORAGE_KEY = 'amphoreus_password'
 const STREAM_INTERVAL = 180 // 每条事件 reveal 间隔（ms）
 
 const defaultState = {
@@ -14,6 +15,7 @@ const defaultState = {
   choices: null,
   fire_chasers_dict: {},
   robbed_characters: [],
+  password: '',
 }
 
 const state = ref({ ...defaultState })
@@ -68,10 +70,14 @@ function saveSession() {
   if (state.value.session_id) {
     localStorage.setItem(STORAGE_KEY, state.value.session_id)
   }
+  if (state.value.password) {
+    localStorage.setItem(PASSWORD_STORAGE_KEY, state.value.password)
+  }
 }
 
 function clearSavedSession() {
   localStorage.removeItem(STORAGE_KEY)
+  localStorage.removeItem(PASSWORD_STORAGE_KEY)
 }
 
 function flushStreamQueue() {
@@ -133,12 +139,16 @@ function setState(newState, { immediate = false } = {}) {
 
 async function tryRestoreSession() {
   const session_id = localStorage.getItem(STORAGE_KEY)
-  if (!session_id) return false
+  const savedPassword = localStorage.getItem(PASSWORD_STORAGE_KEY)
+  if (!session_id || !savedPassword) return false
+
+  setApiPassword(savedPassword)
+  state.value.password = savedPassword
 
   isLoading.value = true
   try {
     const newState = await gameApi.getState(session_id)
-    setState(newState, { immediate: true })
+    setState({ ...newState, password: savedPassword }, { immediate: true })
     return true
   } catch (err) {
     clearSavedSession()
@@ -149,13 +159,15 @@ async function tryRestoreSession() {
   }
 }
 
-async function startGame(max_rounds) {
+async function startGame(max_rounds, password) {
   isLoading.value = true
   error.value = null
   try {
+    setApiPassword(password)
+    state.value.password = password
     const created = await gameApi.createSession(max_rounds)
     const started = await gameApi.start(created.session_id)
-    setState({ ...started, max_rounds })
+    setState({ ...started, max_rounds, password })
   } catch (err) {
     error.value = err.message
   } finally {
@@ -246,6 +258,7 @@ async function continueRound() {
 function resetGame() {
   flushStreamQueue()
   clearSavedSession()
+  setApiPassword('')
   state.value = { ...defaultState }
   displayedEvents.value = []
   charNames.value = {}

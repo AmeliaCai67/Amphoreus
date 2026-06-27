@@ -6,10 +6,19 @@ from typing import Optional
 # 添加 main 目录到模块搜索路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'main'))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+# 访问口令：可通过环境变量 GAME_PASSWORD 覆盖，默认为剧情口令
+GAME_PASSWORD = os.getenv("GAME_PASSWORD", "33550336@Neikos496")
+
+
+def verify_game_password(password: str = Query(..., description="访问口令")):
+    """校验交互式接口访问口令"""
+    if password != GAME_PASSWORD:
+        raise HTTPException(status_code=403, detail="访问口令错误，神谕未响应。")
 
 # 导入 main 模块的函数
 import main
@@ -93,7 +102,7 @@ async def run_game_stream(password: str, max_iterations: int = 6, max_persuasion
     将生成器产生的事件转换为 SSE 格式返回给前端
     """
     # 1. 简单的密码校验
-    if password != "33550336@Neikos496":
+    if password != GAME_PASSWORD:
         yield "data: 【系统拦截】访问口令错误，神谕未响应。\n\n"
         return
     
@@ -234,7 +243,7 @@ async def start_game_endpoint(
 
 # ===== 交互式玩家扮演模式 API =====
 
-@app.post("/api/game/create")
+@app.post("/api/game/create", dependencies=[Depends(verify_game_password)])
 async def create_interactive_game(config: InteractiveGameConfig):
     """
     创建一局交互式游戏会话
@@ -254,7 +263,7 @@ async def create_interactive_game(config: InteractiveGameConfig):
     }
 
 
-@app.post("/api/game/{session_id}/start")
+@app.post("/api/game/{session_id}/start", dependencies=[Depends(verify_game_password)])
 async def start_interactive_game(session_id: str):
     """
     开始游戏：返回开场文案、神谕和可选角色列表
@@ -263,7 +272,7 @@ async def start_interactive_game(session_id: str):
     return session.start()
 
 
-@app.post("/api/game/{session_id}/choose")
+@app.post("/api/game/{session_id}/choose", dependencies=[Depends(verify_game_password)])
 async def choose_character(session_id: str, req: ChooseCharacterRequest):
     """
     玩家选择扮演的角色
@@ -275,7 +284,7 @@ async def choose_character(session_id: str, req: ChooseCharacterRequest):
     return session.choose_character(req.char_id)
 
 
-@app.post("/api/game/{session_id}/fire_decision")
+@app.post("/api/game/{session_id}/fire_decision", dependencies=[Depends(verify_game_password)])
 async def submit_fire_decision(session_id: str, req: DecisionRequest):
     """
     玩家提交逐火决策
@@ -291,7 +300,7 @@ async def submit_fire_decision(session_id: str, req: DecisionRequest):
     return session.submit_fire_decision(req.decision, req.reason)
 
 
-@app.post("/api/game/{session_id}/handover_decision")
+@app.post("/api/game/{session_id}/handover_decision", dependencies=[Depends(verify_game_password)])
 async def submit_handover_decision(session_id: str, req: DecisionRequest):
     """
     玩家提交交火种决策
@@ -307,7 +316,7 @@ async def submit_handover_decision(session_id: str, req: DecisionRequest):
     return session.submit_handover_decision(req.decision, req.reason)
 
 
-@app.post("/api/game/{session_id}/handover_redecision")
+@app.post("/api/game/{session_id}/handover_redecision", dependencies=[Depends(verify_game_password)])
 async def submit_handover_redecision(session_id: str, req: DecisionRequest):
     """
     盗火行者劝说后，玩家再次提交交火种决策
@@ -320,7 +329,7 @@ async def submit_handover_redecision(session_id: str, req: DecisionRequest):
     return session.submit_handover_redecision(req.decision, req.reason)
 
 
-@app.post("/api/game/{session_id}/continue")
+@app.post("/api/game/{session_id}/continue", dependencies=[Depends(verify_game_password)])
 async def continue_interactive_game(session_id: str):
     """
     回合结束后继续下一回合，或结束游戏
@@ -329,7 +338,7 @@ async def continue_interactive_game(session_id: str):
     return session.continue_game()
 
 
-@app.get("/api/game/{session_id}/state")
+@app.get("/api/game/{session_id}/state", dependencies=[Depends(verify_game_password)])
 async def get_interactive_game_state(session_id: str):
     """
     获取当前游戏状态
